@@ -1,0 +1,395 @@
+[
+  {
+    "id": "web-tokyo-ghoul-kaneki",
+    "name": "Tokyo Ghoul - Kaneki",
+    "category": "Oversize",
+    "webCategory": "anime",
+    "description": "Polera oversize de anime \"Tokyo Ghoul\".",
+    "basePrice": 175,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-tokyo-ghoul-kaneki.png"
+  },
+  {
+    "id": "web-dennis-rodman",
+    "name": "Dennis Rodman",
+    "category": "Oversize",
+    "webCategory": "basket",
+    "description": "Polera oversize de basket \"Dennis Rodman\".",
+    "basePrice": 180,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-dennis-rodman.png"
+  },
+  {
+    "id": "web-anthony-edwards",
+    "name": "Anthony Edwards",
+    "category": "Oversize",
+    "webCategory": "basket",
+    "description": "Polera oversize de basket \"Anthony Edwards\".",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-anthony-edwards.png"
+  },
+  {
+    "id": "web-forever-kobe",
+    "name": "Forever Kobe",
+    "category": "Oversize",
+    "webCategory": "basket",
+    "description": "Polera oversize de basket \"Forever Kobe\".",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-forever-kobe.png"
+  },
+  {
+    "id": "web-iverson-vs-kobe",
+    "name": "Iverson vs Kobe",
+    "category": "Oversize",
+    "webCategory": "basket",
+    "description": "Polera oversize de basket \"Iverson vs Kobe\".",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-iverson-vs-kobe.png"
+  },
+  {
+    "id": "web-arizona-silhouette-streetwear",
+    "name": "Arizona Silhouette Streetwear",
+    "category": "Oversize",
+    "webCategory": "streetwear",
+    "description": "Polera oversize streetwear \"Arizona Silhouette Streetwear\".",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-arizona-silhouette-streetwear.png"
+  },
+  {
+    "id": "web-new-start-anime-streetwear",
+    "name": "New Start Anime Streetwear",
+    "category": "Oversize",
+    "webCategory": "streetwear",
+    "description": "Polera oversize streetwear \"New Start Anime Streetwear\".",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-new-start-anime-streetwear.png"
+  },
+  {
+    "id": "web-three-aesthetic-cats",
+    "name": "Three Aesthetic Cats",
+    "category": "Oversize",
+    "webCategory": "gatos",
+    "description": "Polera oversize de gatos \"Three Aesthetic Cats\".",
+    "basePrice": 145,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-three-aesthetic-cats.png"
+  },
+  {
+    "id": "web-cat-with-guitar",
+    "name": "Cat with Guitar",
+    "category": "Oversize",
+    "webCategory": "gatos",
+    "description": "Polera oversize de gatos \"Cat with Guitar\".",
+    "basePrice": 145,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-cat-with-guitar.png"
+  },
+  {
+    "id": "web-evoluci-n-meme",
+    "name": "Evoluci?n-Meme",
+    "category": "Oversize",
+    "webCategory": "meme",
+    "description": "Polera oversize negra con dise?o &ldquo;Evoluci?n&rdquo;.",
+    "basePrice": 145,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": "/imported-products/web-evoluci-n-meme.png"
+  },
+  {
+    "id": "web-negro-frente",
+    "name": "Negro Frente",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Base negra oversize con DTF frontal de alta calidad.",
+    "basePrice": 145,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-arena-posterior",
+    "name": "Arena Posterior",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Estampado solo posterior con acabado resistente.",
+    "basePrice": 155,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-negro-posterior",
+    "name": "Negro Posterior",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Polera oversize negra con arte DTF en la espalda.",
+    "basePrice": 155,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-diseno-arena",
+    "name": "Diseño Arena",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Base clara para frase, logo o arte personalizado.",
+    "basePrice": 155,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-diseno-negro",
+    "name": "Diseño Negro",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Arte personalizado sobre base negra con colores intensos.",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-frente-posterior-arena",
+    "name": "Frente + Posterior Arena",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Estampado doble para una pieza más completa.",
+    "basePrice": 170,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-frente-posterior-negro",
+    "name": "Frente + Posterior Negro",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "DTF frontal y posterior con planchado a presión profesional.",
+    "basePrice": 175,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-arena-edicion-foto",
+    "name": "Arena Edición Foto",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Boceto para imagen, ilustración o gráfico grande.",
+    "basePrice": 165,
+    "colors": [
+      "Blanco arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "web-negro-edicion-foto",
+    "name": "Negro Edición Foto",
+    "category": "Oversize",
+    "webCategory": "catalogo",
+    "description": "Placeholder para un diseño especial del catálogo.",
+    "basePrice": 165,
+    "colors": [
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "prod-oversize-hueso",
+    "name": "Oversize blanco hueso",
+    "category": "Oversize",
+    "basePrice": 160,
+    "colors": [
+      "Blanco hueso",
+      "Negro",
+      "Arena"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "prod-negra-minimal",
+    "name": "Polera negra minimal",
+    "category": "Regular",
+    "basePrice": 130,
+    "colors": [
+      "Negro",
+      "Blanco"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "imageUrl": ""
+  },
+  {
+    "id": "prod-regular-blanca",
+    "name": "Regular blanco básico",
+    "category": "Regular",
+    "basePrice": 120,
+    "colors": [
+      "Blanco",
+      "Negro"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "imageUrl": ""
+  }
+]
