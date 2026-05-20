@@ -1,7 +1,6 @@
 export type SectionKey =
   | "inicio"
   | "pedidos"
-  | "personalizados"
   | "productos"
   | "stock"
   | "clientes"

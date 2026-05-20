@@ -72,45 +72,6 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
     nextStep: "Crear el modal Registrar pedido con catálogo, cliente, pago y entrega.",
     futureConnection: "Luego este módulo recibirá pedidos desde webhooks de n8n y desde la página web."
   },
-  personalizados: {
-    kicker: "Producción",
-    title: "Pedidos personalizados",
-    description: "Gestiona diseños DTF, referencias, anticipo, producción y aprobación del cliente.",
-    primaryAction: "Nuevo personalizado",
-    summary: [
-      { label: "En diseño", value: "2", detail: "Requieren revisión" },
-      { label: "Con anticipo", value: "1", detail: "Pago parcial" },
-      { label: "Por entregar", value: "0", detail: "Sin entregas hoy" }
-    ],
-    mainPanel: {
-      title: "Etapas de personalización",
-      description: "Pantalla preparada para separar catálogo normal de pedidos personalizados.",
-      badge: "Producción",
-      badgeTone: "info",
-      items: [
-        {
-          title: "Referencia del cliente",
-          description: "Guardar imagen, texto, color de polera y ubicación del diseño.",
-          status: "Pendiente",
-          tone: "warning"
-        },
-        {
-          title: "Aprobación",
-          description: "Estado para saber si el cliente aprobó el diseño final.",
-          status: "Planificado",
-          tone: "info"
-        },
-        {
-          title: "Producción",
-          description: "Seguimiento de impresión, planchado, empaquetado y entrega.",
-          status: "Planificado",
-          tone: "info"
-        }
-      ]
-    },
-    nextStep: "Crear formulario específico para poleras personalizadas.",
-    futureConnection: "Más adelante n8n podrá guardar referencias del cliente desde WhatsApp."
-  },
   productos: {
     kicker: "Catálogo",
     title: "Productos",

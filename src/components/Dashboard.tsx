@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
 import { HomeSection } from "@/components/sections/HomeSection";
+import { OrdersSection } from "@/components/sections/OrdersSection";
 import { ProductsSection } from "@/components/sections/ProductsSection";
 import { SectionWorkspace } from "@/components/sections/SectionWorkspace";
 import { StockSection } from "@/components/sections/StockSection";
@@ -96,8 +97,15 @@ export function Dashboard() {
 
   const handleCreateOrder = (order: Order) => {
     setOrderList((currentOrders) => [order, ...currentOrders]);
-    setActiveSection("inicio");
+    setActiveSection("pedidos");
     showToast(`Pedido ${order.id} registrado correctamente.`);
+  };
+
+  const handleUpdateOrder = (orderId: string, updates: Partial<Order>) => {
+    setOrderList((currentOrders) =>
+      currentOrders.map((order) => (order.id === orderId ? { ...order, ...updates } : order))
+    );
+    showToast(`Pedido ${orderId} actualizado.`);
   };
 
   const handleAddProduct = async (product: Product) => {
@@ -241,7 +249,7 @@ export function Dashboard() {
   };
 
   const handleSectionPrimaryAction = () => {
-    if (activeSection === "pedidos" || activeSection === "personalizados") {
+    if (activeSection === "pedidos") {
       setIsOrderModalOpen(true);
       return;
     }
@@ -282,6 +290,16 @@ export function Dashboard() {
           onToggleHidden={handleToggleProductHidden}
           onToggleSoldOut={handleToggleProductSoldOut}
           onUpdateProduct={handleUpdateProduct}
+        />
+      );
+    }
+
+    if (activeSection === "pedidos") {
+      return (
+        <OrdersSection
+          orders={orderList}
+          onRegisterOrder={() => setIsOrderModalOpen(true)}
+          onUpdateOrder={handleUpdateOrder}
         />
       );
     }
