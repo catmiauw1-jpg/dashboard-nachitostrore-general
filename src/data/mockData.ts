@@ -11,9 +11,9 @@ import type {
 
 export const navigationItems: NavigationItem[] = [
   { key: "inicio", label: "Inicio", index: "01" },
-  { key: "pedidos", label: "Pedidos", index: "02" },
-  { key: "personalizados", label: "Personalizados", index: "03" },
-  { key: "productos", label: "Productos", index: "04" },
+  { key: "productos", label: "Productos", index: "02" },
+  { key: "pedidos", label: "Pedidos", index: "03" },
+  { key: "personalizados", label: "Personalizados", index: "04" },
   { key: "stock", label: "Stock", index: "05" },
   { key: "clientes", label: "Clientes", index: "06" },
   { key: "gastos", label: "Gastos", index: "07" },
