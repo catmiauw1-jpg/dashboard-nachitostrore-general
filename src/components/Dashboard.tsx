@@ -482,10 +482,12 @@ export function Dashboard() {
   };
 
   const liveMetrics = useMemo(() => {
-    return buildLiveMetrics(orderList);
+    const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
+    return buildLiveMetrics(countedOrders);
   }, [orderList]);
   const liveChartData = useMemo(() => {
-    return buildLiveChartData(orderList);
+    const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
+    return buildLiveChartData(countedOrders);
   }, [orderList]);
 
   const renderActiveSection = () => {

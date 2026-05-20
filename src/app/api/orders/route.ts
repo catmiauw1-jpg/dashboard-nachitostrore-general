@@ -25,6 +25,15 @@ function valueOf(formData: FormData, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+function firstValueOf(formData: FormData, keys: string[]) {
+  for (const key of keys) {
+    const value = valueOf(formData, key).trim();
+    if (value) return value;
+  }
+
+  return "";
+}
+
 function numericValue(value: string, fallback: number) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -83,6 +92,8 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
   const total = numericValue(valueOf(formData, "total"), 0);
   const references = await uploadReferences(formData, id);
   const items = parseItems(valueOf(formData, "items"));
+  const designDetails = firstValueOf(formData, ["designDetails", "customDetails", "details", "message", "notes"]);
+  const notes = firstValueOf(formData, ["notes", "designDetails", "customDetails", "details", "message"]);
 
   return {
     id: `#${id}`,
@@ -97,10 +108,10 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
     total,
     channel: "Web",
     prendas: quantity,
-    notes: valueOf(formData, "notes") || undefined,
+    notes: notes || undefined,
     source: type === "Catálogo" ? "Web catálogo" : "Web personaliza",
     botStatus: "Esperando comprobante",
-    designDetails: valueOf(formData, "designDetails") || undefined,
+    designDetails: designDetails || undefined,
     quoteOption: valueOf(formData, "quoteOption") || undefined,
     referenceImages: references,
     items: items.length
@@ -114,9 +125,34 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
             unitPrice: quantity > 0 ? total / quantity : total,
             lineTotal: total,
             isCustom: type === "Personalizada",
-            description: valueOf(formData, "designDetails") || undefined
+            description: designDetails || undefined
           }
         ]
+  };
+}
+
+function orderFromJson(payload: Order & Record<string, unknown>): Order {
+  const designDetails = [
+    payload.designDetails,
+    payload.customDetails,
+    payload.details,
+    payload.message,
+    payload.notes
+  ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
+  const notes = [payload.notes, designDetails].find((value) => typeof value === "string" && value.trim()) as
+    | string
+    | undefined;
+
+  return {
+    ...payload,
+    notes,
+    designDetails: designDetails ?? payload.designDetails,
+    items: payload.items?.map((item) => ({
+      ...item,
+      description:
+        item.description ??
+        (payload.type === "Personalizada" ? designDetails ?? payload.quoteOption ?? "Cotización por revisar" : undefined)
+    }))
   };
 }
 
@@ -133,7 +169,7 @@ export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
   const order = contentType.includes("multipart/form-data")
     ? await orderFromFormData(await request.formData())
-    : ((await request.json()) as Order);
+    : orderFromJson((await request.json()) as Order & Record<string, unknown>);
 
   const orders = await createOrder(order);
   return NextResponse.json(orders, { status: 201, headers: jsonHeaders() });

@@ -10,10 +10,10 @@ interface OrdersSectionProps {
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
 }
 
-type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos" | "Entregados";
+type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos" | "Historial";
 
 const orderFilters: Array<"Todos" | OrderType> = ["Todos", "Catálogo", "Personalizada"];
-const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos", "Entregados"];
+const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos", "Historial"];
 const paymentStatuses: PaymentStatus[] = ["Pendiente", "50% pagado", "Pago completo"];
 const orderStatuses: OrderStatus[] = [
   "Esperando pago",
@@ -92,7 +92,7 @@ function orderSearchText(order: Order) {
 function matchesStage(order: Order, stage: StageFilter) {
   if (stage === "Activos") return order.status !== "Entregado" && order.status !== "Cancelado";
   if (stage === "Listos") return order.status === "Lista para enviar";
-  if (stage === "Entregados") return order.status === "Entregado";
+  if (stage === "Historial") return order.status === "Entregado" || order.status === "Cancelado";
   return order.status === stage;
 }
 
@@ -120,6 +120,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
   const [activeStage, setActiveStage] = useState<StageFilter>("Activos");
   const [query, setQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [previewReference, setPreviewReference] = useState<string | null>(null);
 
   const visibleOrders = useMemo(() => {
     const normalizedQuery = query.toLowerCase().trim();
@@ -134,7 +135,13 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
   const displayedOrders = visibleOrders.filter((order) => matchesStage(order, activeStage));
   const activeOrders = orders.filter((order) => order.status !== "Entregado" && order.status !== "Cancelado");
-  const customWebOrders = orders.filter((order) => order.type === "Personalizada" && order.source === "Web personaliza");
+  const customWebOrders = orders.filter(
+    (order) =>
+      order.type === "Personalizada" &&
+      order.source === "Web personaliza" &&
+      order.status !== "Cancelado" &&
+      order.status !== "Entregado"
+  );
   const readyOrders = orders.filter((order) => order.status === "Lista para enviar").length;
   const pendingPayments = orders.filter((order) => order.payment !== "Pago completo" && order.status !== "Cancelado").length;
   const selectedOrder = selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined;
@@ -145,15 +152,46 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
     .reduce((sum, order) => sum + order.total, 0);
 
   useEffect(() => {
-    if (selectedOrderId && !orders.some((order) => order.id === selectedOrderId && order.status !== "Cancelado")) {
+    if (selectedOrderId && !orders.some((order) => order.id === selectedOrderId)) {
       setSelectedOrderId(null);
     }
   }, [orders, selectedOrderId]);
 
   const updateStatus = (orderId: string, status: OrderStatus) => {
     onUpdateOrder(orderId, { status });
-    if (status === "Cancelado") setSelectedOrderId(null);
+    if (status === "Cancelado" || status === "Entregado") setActiveStage("Historial");
   };
+
+  const downloadReference = async (reference: string) => {
+    const filename = referenceName(reference);
+
+    try {
+      const response = await fetch(reference);
+      if (!response.ok) throw new Error("No se pudo descargar");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      const link = document.createElement("a");
+      link.href = reference;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  };
+
+  const selectedDetailsText = selectedOrder
+    ? selectedOrder.notes && selectedOrder.notes.trim()
+      ? selectedOrder.notes
+      : selectedOrder.designDetails ?? "Sin detalles del diseño todavía."
+    : "";
 
   return (
     <section className="section-workspace">
@@ -412,7 +450,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                     <span>{selectedOrder.quoteOption ?? "Cotización por revisar"}</span>
                   </div>
                   <p className="order-detail-notes">
-                    {selectedOrder.designDetails ?? selectedOrder.notes ?? "Sin detalles del diseño todavía."}
+                    {selectedDetailsText}
                   </p>
 
                   {(selectedOrder.referenceImages ?? []).length ? (
@@ -420,9 +458,13 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                       {(selectedOrder.referenceImages ?? []).map((reference, index) => (
                         <div className="reference-preview" key={`${selectedOrder.id}-${reference}-${index}`}>
                           {isReferenceUrl(reference) ? (
-                            <a href={reference} rel="noreferrer" target="_blank">
+                            <button
+                              className="reference-image-button"
+                              onClick={() => setPreviewReference(reference)}
+                              type="button"
+                            >
                               <img alt={`Referencia ${index + 1} de ${selectedOrder.customer}`} src={reference} />
-                            </a>
+                            </button>
                           ) : (
                             <div className="reference-placeholder">
                               <span>REF</span>
@@ -432,9 +474,9 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                           <div>
                             <strong>{referenceName(reference)}</strong>
                             {isReferenceUrl(reference) ? (
-                              <a className="btn" download href={reference} rel="noreferrer" target="_blank">
+                              <button className="btn" onClick={() => void downloadReference(reference)} type="button">
                                 Descargar
-                              </a>
+                              </button>
                             ) : (
                               <button className="btn" disabled type="button">
                                 Descargar
@@ -469,6 +511,17 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           )}
         </aside>
       </div>
+
+      {previewReference ? (
+        <div className="image-preview-backdrop" onClick={() => setPreviewReference(null)} role="presentation">
+          <div className="image-preview-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+            <button className="btn image-preview-close" onClick={() => setPreviewReference(null)} type="button">
+              Cerrar
+            </button>
+            <img alt="Referencia del pedido" src={previewReference} />
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

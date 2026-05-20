@@ -892,9 +892,12 @@ body.dark .btn.primary {
   object-fit: cover;
 }
 
-.reference-preview > a {
-  display: block;
+.reference-image-button {
   width: 92px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: zoom-in;
 }
 
 .reference-placeholder {
@@ -943,6 +946,44 @@ body.dark .btn.primary {
 
 .subtle-cancel {
   justify-self: stretch;
+}
+
+.image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 7, 17, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.image-preview-modal {
+  position: relative;
+  width: min(760px, 94vw);
+  max-height: 90vh;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.image-preview-modal img {
+  display: block;
+  width: 100%;
+  max-height: calc(90vh - 96px);
+  border-radius: 18px;
+  object-fit: contain;
+  background: var(--surface-soft);
+}
+
+.image-preview-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
 }
 
 .ready-box {
