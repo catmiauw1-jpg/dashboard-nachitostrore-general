@@ -1199,6 +1199,35 @@ body.dark .bar {
   background: rgba(248, 113, 113, 0.08);
 }
 
+.incoming-stock-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.incoming-stock-preview div {
+  display: grid;
+  gap: 6px;
+  min-height: 78px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.incoming-stock-preview span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.incoming-stock-preview strong {
+  align-self: end;
+  font-size: 26px;
+  line-height: 1;
+}
+
 .orders-toolbar {
   display: flex;
   justify-content: space-between;

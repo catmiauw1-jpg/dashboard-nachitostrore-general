@@ -10,7 +10,7 @@ interface StockSectionProps {
   onAdjustStock: (itemId: string, delta: number) => void | Promise<void>;
 }
 
-const baseColors = ["Blanco arena", "Negro"];
+const defaultColors = ["Blanco arena", "Negro"];
 const baseSizes = ["M", "L", "XL"];
 const baseProductId = "base-polera-dtf";
 const baseProductName = "Polera base DTF";
@@ -19,10 +19,29 @@ function stockId(color: string, size: string) {
   return `${baseProductId}::${color}::${size}`;
 }
 
+function normalizeColor(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function resolveColorName(value: string, colors: string[]) {
+  const cleanColor = value.trim().replace(/\s+/g, " ");
+  if (!cleanColor) return "";
+
+  return colors.find((option) => normalizeColor(option) === normalizeColor(cleanColor)) ?? cleanColor;
+}
+
 export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSectionProps) {
-  const [color, setColor] = useState(baseColors[0]);
+  const colors = useMemo(
+    () => [...new Set([...defaultColors, ...stock.map((item) => item.color)].filter(Boolean))],
+    [stock]
+  );
+  const [color, setColor] = useState(defaultColors[0]);
   const [size, setSize] = useState(baseSizes[0]);
-  const [available, setAvailable] = useState(0);
+  const [quantity, setQuantity] = useState(1);
   const [min, setMin] = useState(1);
 
   const stockByColor = useMemo(
@@ -33,38 +52,38 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
       }, {}),
     [stock]
   );
+  const selectedColor = useMemo(() => resolveColorName(color, colors), [color, colors]);
   const selectedVariant = useMemo(
-    () => stock.find((item) => item.size === size && item.color === color),
-    [color, size, stock]
+    () => stock.find((item) => item.size === size && normalizeColor(item.color) === normalizeColor(selectedColor)),
+    [selectedColor, size, stock]
   );
   const totalUnits = stock.reduce((sum, item) => sum + item.available, 0);
   const lowStockCount = stock.filter((item) => item.available <= item.min).length;
   const emptyStockCount = stock.filter((item) => item.available === 0).length;
+  const nextAvailable = (selectedVariant?.available ?? 0) + Math.max(0, quantity);
 
   useEffect(() => {
-    if (!selectedVariant) {
-      setAvailable(0);
-      setMin(1);
-      return;
-    }
-
-    setAvailable(selectedVariant.available);
-    setMin(selectedVariant.min);
+    setMin(selectedVariant?.min ?? 1);
   }, [selectedVariant]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const cleanColor = selectedColor;
+    if (!cleanColor) return;
 
     void onUpdateStock({
-      id: selectedVariant?.id ?? stockId(color, size),
+      id: selectedVariant?.id ?? stockId(cleanColor, size),
       productId: baseProductId,
       productName: baseProductName,
       size,
-      color,
-      item: `${baseProductName} ${color} ${size}`,
-      available: Math.max(0, available),
+      color: cleanColor,
+      item: `${baseProductName} ${cleanColor} ${size}`,
+      available: nextAvailable,
       min: Math.max(0, min)
     });
+
+    setQuantity(1);
+    setColor(cleanColor);
   };
 
   return (
@@ -80,8 +99,8 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
       <div className="section-summary-grid">
         <article className="section-summary-card">
           <span>Colores base</span>
-          <strong>{baseColors.length}</strong>
-          <small>Blanco arena y negro</small>
+          <strong>{colors.length}</strong>
+          <small>Colores disponibles</small>
         </article>
         <article className="section-summary-card">
           <span>Unidades</span>
@@ -104,25 +123,29 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h3>Ajustar prenda base</h3>
-              <p>Elige color y talla. Este stock se usa para todos los diseños DTF.</p>
+              <h3>Registrar llegada de prendas</h3>
+              <p>Suma al stock cuando recibas poleras base. Si es otro color, escríbelo y se crea.</p>
             </div>
-            <span className="badge accent">Base</span>
+            <span className="badge accent">Entrada</span>
           </div>
 
           <form className="product-form" onSubmit={handleSubmit}>
-            <div className="form-grid two-columns">
-              <label className="field">
-                <span>Color base</span>
-                <select value={color} onChange={(event) => setColor(event.target.value)}>
-                  {baseColors.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <label className="field wide-field">
+              <span>Color de la prenda</span>
+              <input
+                list="base-color-options"
+                placeholder="Ej: Azul marino, Rojo, Blanco arena"
+                value={color}
+                onChange={(event) => setColor(event.target.value)}
+              />
+              <datalist id="base-color-options">
+                {colors.map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
+            </label>
 
+            <div className="form-grid two-columns">
               <label className="field">
                 <span>Talla</span>
                 <select value={size} onChange={(event) => setSize(event.target.value)}>
@@ -135,12 +158,12 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
               </label>
 
               <label className="field">
-                <span>Disponible</span>
+                <span>Cantidad que llegó</span>
                 <input
                   min={0}
                   type="number"
-                  value={available}
-                  onChange={(event) => setAvailable(Number(event.target.value))}
+                  value={quantity}
+                  onChange={(event) => setQuantity(Number(event.target.value))}
                 />
               </label>
 
@@ -150,8 +173,19 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
               </label>
             </div>
 
+            <div className="incoming-stock-preview">
+              <div>
+                <span>Stock actual</span>
+                <strong>{selectedVariant?.available ?? 0}</strong>
+              </div>
+              <div>
+                <span>Después de guardar</span>
+                <strong>{nextAvailable}</strong>
+              </div>
+            </div>
+
             <button className="btn primary" type="submit">
-              Guardar stock base
+              Sumar al stock
             </button>
           </form>
         </article>
@@ -165,7 +199,7 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
           </div>
 
           <div className="base-stock-board">
-            {baseColors.map((baseColor) => {
+            {colors.map((baseColor) => {
               const variants = baseSizes.map((baseSize) => {
                 return stockByColor[baseColor]?.find((item) => item.size === baseSize) ?? {
                   id: stockId(baseColor, baseSize),
