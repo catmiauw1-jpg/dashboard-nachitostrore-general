@@ -105,7 +105,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
     visibleOrders.find((order) => order.id === selectedOrderId) ??
     visibleOrders[0];
   const selectedItems = selectedOrder ? orderItems(selectedOrder) : [];
-  const selectedTotal = selectedItems.reduce((sum, item) => sum + item.lineTotal, 0) || selectedOrder?.total || 0;
+  const selectedTotal = selectedOrder?.total ?? selectedItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
   return (
     <section className="section-workspace">

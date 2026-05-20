@@ -88,6 +88,38 @@ function itemRowToOrderLine(item: OrderItemRow): OrderLineItem {
   };
 }
 
+function parseCatalogItemsFromNotes(notes: string | undefined, total: number): OrderLineItem[] {
+  if (!notes) return [];
+
+  const parsedItems = notes
+    .split(";")
+    .map((line) => line.trim())
+    .map((line) => {
+      const match = line.match(/^(\d+)x\s+(.+?)\s+\((.+?),\s*talla\s+(.+?)\)$/i);
+      if (!match) return null;
+
+      return {
+        quantity: Math.max(1, Number(match[1])),
+        productName: match[2].trim(),
+        color: match[3].trim(),
+        size: match[4].trim()
+      };
+    })
+    .filter((item): item is { quantity: number; productName: string; color: string; size: string } => Boolean(item));
+
+  const totalQuantity = parsedItems.reduce((sum, item) => sum + item.quantity, 0);
+  if (!parsedItems.length || !totalQuantity) return [];
+
+  const unitPrice = total / totalQuantity;
+
+  return parsedItems.map((item) => ({
+    ...item,
+    unitPrice,
+    lineTotal: item.quantity * unitPrice,
+    isCustom: false
+  }));
+}
+
 function orderItemsForInsert(order: Order) {
   const items = order.items?.length
     ? order.items
@@ -123,9 +155,16 @@ function orderItemsForInsert(order: Order) {
 function rowToOrder(row: OrderRow): Order {
   const notes = parseNotes(row.notes);
   const firstItem = row.order_items?.[0];
-  const items = (row.order_items ?? []).map(itemRowToOrderLine);
-  const itemsTotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-  const total = Number(row.total ?? itemsTotal);
+  const databaseItems = (row.order_items ?? []).map(itemRowToOrderLine);
+  const databaseItemsTotal = databaseItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const total = Number(row.total ?? databaseItemsTotal);
+  const legacyCatalogItems =
+    row.order_type === "Catálogo" &&
+    databaseItems.length === 1 &&
+    databaseItems[0]?.productName.toLowerCase().includes("pedido catálogo")
+      ? parseCatalogItemsFromNotes(notes.notes, total)
+      : [];
+  const items = legacyCatalogItems.length ? legacyCatalogItems : databaseItems;
   const prendas = items.reduce((sum, item) => sum + item.quantity, 0) || Number(firstItem?.quantity ?? 1);
   const product =
     items.length > 1

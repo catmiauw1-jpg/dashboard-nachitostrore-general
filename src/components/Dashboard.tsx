@@ -44,9 +44,9 @@ export function Dashboard() {
   const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
     try {
       const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
-        fetch("/api/products"),
-        fetch("/api/stock"),
-        fetch("/api/orders")
+        fetch("/api/products", { cache: "no-store" }),
+        fetch("/api/stock", { cache: "no-store" }),
+        fetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
       ]);
 
       if (productsResponse.ok) {
@@ -90,9 +90,9 @@ export function Dashboard() {
     async function loadProducts() {
       try {
         const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
-          fetch("/api/products"),
-          fetch("/api/stock"),
-          fetch("/api/orders")
+          fetch("/api/products", { cache: "no-store" }),
+          fetch("/api/stock", { cache: "no-store" }),
+          fetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
         ]);
 
         if (productsResponse.ok) {
@@ -125,7 +125,7 @@ export function Dashboard() {
       if (document.visibilityState === "visible") {
         void refreshBusinessData({ notifyNewOrders: true });
       }
-    }, 5000);
+    }, 2000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
