@@ -301,6 +301,16 @@ body.dark .btn.primary {
   background: rgba(239, 68, 68, 0.14);
 }
 
+.btn.danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.btn.danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+}
+
 .btn.icon {
   width: 43px;
   height: 43px;
@@ -520,7 +530,7 @@ body.dark .btn.primary {
 
 .orders-layout {
   display: grid;
-  grid-template-columns: minmax(420px, 0.95fr) minmax(440px, 1.05fr);
+  grid-template-columns: minmax(420px, 0.9fr) minmax(460px, 1.1fr);
   gap: 18px;
   align-items: start;
 }
@@ -563,6 +573,7 @@ body.dark .btn.primary {
 
 .production-order-card.active {
   transform: translateY(-1px);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .order-list-products {
@@ -612,6 +623,13 @@ body.dark .btn.primary {
   font-weight: 850;
 }
 
+.order-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .order-control-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -640,6 +658,12 @@ body.dark .btn.primary {
   top: 16px;
   display: grid;
   gap: 14px;
+}
+
+.order-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
 }
 
 .order-detail-time,
@@ -704,6 +728,51 @@ body.dark .btn.primary {
   border-radius: 20px;
   padding: 14px;
   background: var(--surface-soft);
+}
+
+.workflow-block {
+  display: grid;
+  gap: 12px;
+}
+
+.quick-step-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quick-step {
+  min-height: 76px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.quick-step:hover,
+.quick-step.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+}
+
+.quick-step strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.quick-step small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.3;
 }
 
 .order-detail-title {
@@ -823,6 +892,11 @@ body.dark .btn.primary {
   object-fit: cover;
 }
 
+.reference-preview > a {
+  display: block;
+  width: 92px;
+}
+
 .reference-placeholder {
   display: grid;
   place-items: center;
@@ -851,6 +925,24 @@ body.dark .btn.primary {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.compact-empty {
+  padding: 14px;
+}
+
+.order-detail-empty {
+  min-height: 320px;
+  display: grid;
+  align-content: center;
+}
+
+.order-empty-state {
+  text-align: center;
+}
+
+.subtle-cancel {
+  justify-self: stretch;
 }
 
 .ready-box {
@@ -2377,6 +2469,10 @@ body.dark .field select option {
     position: static;
   }
 
+  .quick-step-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .order-flow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2500,6 +2596,11 @@ body.dark .field select option {
   }
 
   .order-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .order-detail-grid,
+  .quick-step-grid {
     grid-template-columns: 1fr;
   }
 

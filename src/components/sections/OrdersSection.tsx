@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
 import type { Order, OrderLineItem, OrderStatus, OrderType, PaymentStatus } from "@/types";
 
@@ -10,14 +10,10 @@ interface OrdersSectionProps {
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
 }
 
+type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos" | "Entregados";
+
 const orderFilters: Array<"Todos" | OrderType> = ["Todos", "Catálogo", "Personalizada"];
-const stageFilters: Array<"Activos" | "Esperando pago" | "En preparación" | "Listos" | "Entregados"> = [
-  "Activos",
-  "Esperando pago",
-  "En preparación",
-  "Listos",
-  "Entregados"
-];
+const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos", "Entregados"];
 const paymentStatuses: PaymentStatus[] = ["Pendiente", "50% pagado", "Pago completo"];
 const orderStatuses: OrderStatus[] = [
   "Esperando pago",
@@ -25,6 +21,13 @@ const orderStatuses: OrderStatus[] = [
   "Lista para enviar",
   "Entregado",
   "Cancelado"
+];
+
+const quickSteps: Array<{ label: string; status: OrderStatus; helper: string }> = [
+  { label: "Pago pendiente", status: "Esperando pago", helper: "Aún falta confirmar" },
+  { label: "Preparar", status: "En preparación", helper: "Descuenta stock" },
+  { label: "Listo", status: "Lista para enviar", helper: "Para entregar" },
+  { label: "Entregado", status: "Entregado", helper: "Cierra pedido" }
 ];
 
 function isReferenceUrl(reference: string) {
@@ -86,9 +89,35 @@ function orderSearchText(order: Order) {
     .toLowerCase();
 }
 
+function matchesStage(order: Order, stage: StageFilter) {
+  if (stage === "Activos") return order.status !== "Entregado" && order.status !== "Cancelado";
+  if (stage === "Listos") return order.status === "Lista para enviar";
+  if (stage === "Entregados") return order.status === "Entregado";
+  return order.status === stage;
+}
+
+function mainOrderTitle(order: Order, items: OrderLineItem[]) {
+  if (order.type === "Catálogo" && items.length > 1) return "Pedido catálogo";
+  return order.product;
+}
+
+function firstOrderLine(order: Order, items: OrderLineItem[]) {
+  if (!items.length) return "Sin prendas registradas";
+
+  return items
+    .slice(0, 2)
+    .map((item) => {
+      const details = [item.color, item.size ? `Talla ${item.size}` : undefined]
+        .filter(Boolean)
+        .join(" · ");
+      return details ? `${item.productName} (${details})` : item.productName;
+    })
+    .join(", ");
+}
+
 export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: OrdersSectionProps) {
   const [activeFilter, setActiveFilter] = useState<"Todos" | OrderType>("Todos");
-  const [activeStage, setActiveStage] = useState<(typeof stageFilters)[number]>("Activos");
+  const [activeStage, setActiveStage] = useState<StageFilter>("Activos");
   const [query, setQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -103,29 +132,38 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
     });
   }, [activeFilter, orders, query]);
 
-  const preparationOrders = visibleOrders.filter((order) => order.status !== "Entregado" && order.status !== "Cancelado");
-  const displayedOrders = visibleOrders.filter((order) => {
-    if (activeStage === "Activos") return order.status !== "Entregado" && order.status !== "Cancelado";
-    if (activeStage === "Listos") return order.status === "Lista para enviar";
-    if (activeStage === "Entregados") return order.status === "Entregado";
-    return order.status === activeStage;
-  });
+  const displayedOrders = visibleOrders.filter((order) => matchesStage(order, activeStage));
+  const activeOrders = orders.filter((order) => order.status !== "Entregado" && order.status !== "Cancelado");
   const customWebOrders = orders.filter((order) => order.type === "Personalizada" && order.source === "Web personaliza");
   const readyOrders = orders.filter((order) => order.status === "Lista para enviar").length;
-  const pendingPayments = orders.filter((order) => order.payment !== "Pago completo").length;
+  const pendingPayments = orders.filter((order) => order.payment !== "Pago completo" && order.status !== "Cancelado").length;
   const selectedOrder = selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined;
   const selectedItems = selectedOrder ? orderItems(selectedOrder) : [];
   const selectedTotal = selectedOrder?.total ?? selectedItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const activeSalesTotal = orders
+    .filter((order) => order.status !== "Cancelado")
+    .reduce((sum, order) => sum + order.total, 0);
+
+  useEffect(() => {
+    if (selectedOrderId && !orders.some((order) => order.id === selectedOrderId && order.status !== "Cancelado")) {
+      setSelectedOrderId(null);
+    }
+  }, [orders, selectedOrderId]);
+
+  const updateStatus = (orderId: string, status: OrderStatus) => {
+    onUpdateOrder(orderId, { status });
+    if (status === "Cancelado") setSelectedOrderId(null);
+  };
 
   return (
     <section className="section-workspace">
-      <header className="section-head">
+      <header className="section-head orders-head">
         <div>
           <span className="section-kicker">Producción</span>
           <h2>Pedidos para preparar</h2>
           <p>
-            Revisa pedidos de catálogo y personalizados desde la web. Selecciona un pedido para ver sus prendas,
-            referencias, fecha, hora y total.
+            Controla pedidos de catálogo y personalizados desde la web. Selecciona uno para ver prendas, referencias,
+            fecha, hora, pago y total.
           </p>
         </div>
         <button className="btn primary" onClick={onRegisterOrder} type="button">
@@ -135,14 +173,14 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
       <div className="section-summary-grid">
         <article className="section-summary-card">
-          <span>En preparación</span>
-          <strong>{preparationOrders.length}</strong>
-          <small>Pedidos activos</small>
+          <span>Activos</span>
+          <strong>{activeOrders.length}</strong>
+          <small>Pedidos por atender</small>
         </article>
         <article className="section-summary-card">
           <span>Personalizados web</span>
           <strong>{customWebOrders.length}</strong>
-          <small>Con referencias y detalles</small>
+          <small>Con referencias del cliente</small>
         </article>
         <article className="section-summary-card">
           <span>Listos</span>
@@ -152,7 +190,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
         <article className="section-summary-card">
           <span>Pagos pendientes</span>
           <strong>{pendingPayments}</strong>
-          <small>{formatCurrency(orders.reduce((sum, order) => sum + order.total, 0))} registrados</small>
+          <small>{formatCurrency(activeSalesTotal)} registrados</small>
         </article>
       </div>
 
@@ -162,7 +200,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
             <div className="panel-header compact-panel-header">
               <div>
                 <h3>Cola de preparación</h3>
-                <p>Selecciona un pedido para revisar qué pidió el cliente.</p>
+                <p>Ordena el trabajo por estado y abre cada ficha para producir sin perder detalles.</p>
               </div>
             </div>
             <input
@@ -205,7 +243,6 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           <div className="production-list">
             {displayedOrders.map((order) => {
               const items = orderItems(order);
-              const itemSummary = items.slice(0, 2).map((item) => item.productName).join(", ");
               const isSelected = selectedOrder?.id === order.id;
 
               return (
@@ -219,19 +256,24 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                     <div className="order-card-head">
                       <div>
                         <span className="section-kicker">{order.id}</span>
-                        <h4>{order.type === "Catálogo" && items.length > 1 ? "Pedido catálogo" : order.product}</h4>
+                        <h4>{mainOrderTitle(order, items)}</h4>
                       </div>
                       <span className={`badge ${order.type === "Personalizada" ? "accent" : "info"}`}>{order.type}</span>
                     </div>
 
                     <p>{order.customer} · {formatOrderDate(order.createdAt)}</p>
-                    <strong className="order-list-products">{itemSummary}{items.length > 2 ? ` +${items.length - 2}` : ""}</strong>
+                    <strong className="order-list-products">
+                      {firstOrderLine(order, items)}
+                      {items.length > 2 ? ` +${items.length - 2}` : ""}
+                    </strong>
 
-                    <div className="order-chip-row">
-                      <span>{order.prendas} {order.prendas === 1 ? "prenda" : "prendas"}</span>
-                      <span>{formatCurrency(order.total)}</span>
-                      <span className={badgeClass(order.payment)}>{order.payment}</span>
-                      <span className={badgeClass(order.status)}>{order.status}</span>
+                    <div className="order-card-footer">
+                      <div className="order-chip-row">
+                        <span>{order.prendas} {order.prendas === 1 ? "prenda" : "prendas"}</span>
+                        <span>{formatCurrency(order.total)}</span>
+                        <span className={badgeClass(order.payment)}>{order.payment}</span>
+                        <span className={badgeClass(order.status)}>{order.status}</span>
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -239,9 +281,9 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
             })}
 
             {!displayedOrders.length ? (
-              <div className="empty-state">
+              <div className="empty-state order-empty-state">
                 <strong>No hay pedidos en este filtro</strong>
-                <p>Cambia el tipo o estado para revisar otros pedidos.</p>
+                <p>Cuando llegue un pedido desde la web aparecerá aquí en tiempo real.</p>
               </div>
             ) : null}
           </div>
@@ -261,18 +303,41 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                 </span>
               </div>
 
-              <div className="order-detail-time">
-                <span>Fecha y hora del pedido</span>
-                <strong>{formatOrderDate(selectedOrder.createdAt)}</strong>
+              <div className="order-detail-grid">
+                <div className="order-detail-time">
+                  <span>Fecha y hora</span>
+                  <strong>{formatOrderDate(selectedOrder.createdAt)}</strong>
+                </div>
+
+                <div className="order-detail-total">
+                  <span>Total</span>
+                  <strong>{formatCurrency(selectedTotal)}</strong>
+                  <small>{selectedOrder.prendas} {selectedOrder.prendas === 1 ? "prenda" : "prendas"}</small>
+                  <small className={selectedOrder.stockDeducted ? "stock-deducted" : "stock-pending"}>
+                    {selectedOrder.stockDeducted ? "Stock descontado" : "Stock pendiente"}
+                  </small>
+                </div>
               </div>
 
-              <div className="order-detail-total">
-                <span>Total del pedido</span>
-                <strong>{formatCurrency(selectedTotal)}</strong>
-                <small>{selectedOrder.prendas} {selectedOrder.prendas === 1 ? "prenda" : "prendas"}</small>
-                <small className={selectedOrder.stockDeducted ? "stock-deducted" : "stock-pending"}>
-                  {selectedOrder.stockDeducted ? "Stock descontado" : "Stock pendiente"}
-                </small>
+              <div className="order-detail-block workflow-block">
+                <div className="order-detail-title">
+                  <h4>Avance del pedido</h4>
+                  <span>{selectedOrder.status}</span>
+                </div>
+
+                <div className="quick-step-grid">
+                  {quickSteps.map((step) => (
+                    <button
+                      className={selectedOrder.status === step.status ? "quick-step active" : "quick-step"}
+                      key={step.status}
+                      onClick={() => updateStatus(selectedOrder.id, step.status)}
+                      type="button"
+                    >
+                      <strong>{step.label}</strong>
+                      <small>{step.helper}</small>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="order-control-grid detail-controls">
@@ -295,7 +360,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                   <span>Preparación</span>
                   <select
                     className={`inline-select ${badgeClass(selectedOrder.status)}`}
-                    onChange={(event) => onUpdateOrder(selectedOrder.id, { status: event.target.value as OrderStatus })}
+                    onChange={(event) => updateStatus(selectedOrder.id, event.target.value as OrderStatus)}
                     value={selectedOrder.status}
                   >
                     {orderStatuses.map((status) => (
@@ -303,14 +368,6 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                     ))}
                   </select>
                 </label>
-
-                <button
-                  className="btn"
-                  onClick={() => onUpdateOrder(selectedOrder.id, { status: "Lista para enviar" })}
-                  type="button"
-                >
-                  Marcar listo
-                </button>
               </div>
 
               <div className="order-detail-block">
@@ -358,37 +415,54 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                     {selectedOrder.designDetails ?? selectedOrder.notes ?? "Sin detalles del diseño todavía."}
                   </p>
 
-                  <div className="reference-preview-grid">
-                    {(selectedOrder.referenceImages ?? []).map((reference, index) => (
-                      <div className="reference-preview" key={`${selectedOrder.id}-${reference}-${index}`}>
-                        {isReferenceUrl(reference) ? (
-                          <img alt={`Referencia ${index + 1} de ${selectedOrder.customer}`} src={reference} />
-                        ) : (
-                          <div className="reference-placeholder">
-                            <span>REF</span>
-                            <strong>{index + 1}</strong>
-                          </div>
-                        )}
-                        <div>
-                          <strong>{referenceName(reference)}</strong>
+                  {(selectedOrder.referenceImages ?? []).length ? (
+                    <div className="reference-preview-grid">
+                      {(selectedOrder.referenceImages ?? []).map((reference, index) => (
+                        <div className="reference-preview" key={`${selectedOrder.id}-${reference}-${index}`}>
                           {isReferenceUrl(reference) ? (
-                            <a className="btn" download href={reference} rel="noreferrer" target="_blank">
-                              Descargar
+                            <a href={reference} rel="noreferrer" target="_blank">
+                              <img alt={`Referencia ${index + 1} de ${selectedOrder.customer}`} src={reference} />
                             </a>
                           ) : (
-                            <button className="btn" disabled type="button">
-                              Descargar
-                            </button>
+                            <div className="reference-placeholder">
+                              <span>REF</span>
+                              <strong>{index + 1}</strong>
+                            </div>
                           )}
+                          <div>
+                            <strong>{referenceName(reference)}</strong>
+                            {isReferenceUrl(reference) ? (
+                              <a className="btn" download href={reference} rel="noreferrer" target="_blank">
+                                Descargar
+                              </a>
+                            ) : (
+                              <button className="btn" disabled type="button">
+                                Descargar
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state compact-empty">
+                      <strong>Sin imágenes adjuntas</strong>
+                      <p>Cuando el cliente suba referencias desde la web aparecerán aquí.</p>
+                    </div>
+                  )}
                 </div>
               ) : null}
+
+              <button
+                className="btn danger subtle-cancel"
+                onClick={() => updateStatus(selectedOrder.id, "Cancelado")}
+                type="button"
+              >
+                Cancelar pedido
+              </button>
             </>
           ) : (
-            <div className="empty-state">
+            <div className="empty-state order-detail-empty">
               <strong>Selecciona un pedido</strong>
               <p>Elige un pedido de la cola para ver prendas, total, fecha, hora, pago y referencias.</p>
             </div>
