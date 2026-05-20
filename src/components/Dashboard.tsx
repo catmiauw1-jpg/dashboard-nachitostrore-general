@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
 import { HomeSection } from "@/components/sections/HomeSection";
@@ -15,14 +15,145 @@ import {
   chartData,
   customers,
   initialChats,
-  metrics,
+  metrics as fallbackMetrics,
   navigationItems,
   orders,
   products,
   stockData
 } from "@/data/mockData";
 import { sectionDefinitions } from "@/data/sectionDefinitions";
-import type { Conversation, Order, Product, SectionKey, StockItem } from "@/types";
+import type { ChartData, ChartPoint, Conversation, Metric, MonthKey, Order, Product, SectionKey, StockItem } from "@/types";
+
+const monthKeys: MonthKey[] = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre"
+];
+
+const weekdayLabels = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+function sameDay(first: Date, second: Date) {
+  return first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate();
+}
+
+function orderDate(order: Order) {
+  const date = order.createdAt ? new Date(order.createdAt) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function ordersSummary(ordersToSummarize: Order[]): ChartPoint {
+  return ordersToSummarize.reduce(
+    (summary, order) => ({
+      label: summary.label,
+      ventas: summary.ventas + order.total,
+      prendas: summary.prendas + order.prendas,
+      pedidos: summary.pedidos + 1
+    }),
+    { label: "", ventas: 0, prendas: 0, pedidos: 0 }
+  );
+}
+
+function buildLiveChartData(ordersToChart: Order[]): ChartData {
+  const today = new Date();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weekly = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + index);
+    const summary = ordersSummary(ordersToChart.filter((order) => {
+      const date = orderDate(order);
+      return date ? sameDay(date, day) : false;
+    }));
+
+    return { ...summary, label: weekdayLabels[day.getDay()] };
+  });
+
+  const monthly = monthKeys.reduce<Record<MonthKey, ChartPoint[]>>((months, month, monthIndex) => {
+    months[month] = [0, 1, 2, 3, 4].map((weekIndex) => {
+      const summary = ordersSummary(ordersToChart.filter((order) => {
+        const date = orderDate(order);
+        if (!date || date.getFullYear() !== today.getFullYear() || date.getMonth() !== monthIndex) return false;
+        return Math.min(4, Math.floor((date.getDate() - 1) / 7)) === weekIndex;
+      }));
+
+      return { ...summary, label: `Sem ${weekIndex + 1}` };
+    });
+
+    return months;
+  }, {} as Record<MonthKey, ChartPoint[]>);
+
+  const yearly = monthKeys.map((month, monthIndex) => {
+    const summary = ordersSummary(ordersToChart.filter((order) => {
+      const date = orderDate(order);
+      return date ? date.getFullYear() === today.getFullYear() && date.getMonth() === monthIndex : false;
+    }));
+
+    return { ...summary, label: month.slice(0, 3).toUpperCase() };
+  });
+
+  return { weekly, monthly, yearly };
+}
+
+function buildLiveMetrics(ordersToSummarize: Order[]): Metric[] {
+  const today = new Date();
+  const todayOrders = ordersToSummarize.filter((order) => {
+    const date = orderDate(order);
+    return date ? sameDay(date, today) : false;
+  });
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+  const weekOrders = ordersToSummarize.filter((order) => {
+    const date = orderDate(order);
+    return date ? date >= weekStart && date <= today : false;
+  });
+  const pendingPayments = ordersToSummarize.filter((order) => order.payment !== "Pago completo").length;
+  const pendingProduction = ordersToSummarize.filter(
+    (order) => order.status !== "Entregado" && order.status !== "Cancelado"
+  ).length;
+  const todaySummary = ordersSummary(todayOrders);
+  const weekSummary = ordersSummary(weekOrders);
+
+  return [
+    {
+      label: "Ventas de hoy",
+      value: `${todaySummary.ventas.toLocaleString("es-BO")} Bs`,
+      icon: "Bs",
+      details: [`${todaySummary.prendas} prendas`, `${todaySummary.pedidos} pedidos`]
+    },
+    {
+      label: "Ventas 7 días",
+      value: `${weekSummary.ventas.toLocaleString("es-BO")} Bs`,
+      icon: "7D",
+      details: [`${weekSummary.prendas} prendas`, `${weekSummary.pedidos} pedidos`]
+    },
+    {
+      label: "Ganancia estimada",
+      value: `${Math.round(weekSummary.ventas * 0.35).toLocaleString("es-BO")} Bs`,
+      icon: "%",
+      details: ["Estimado sobre ventas recientes"]
+    },
+    {
+      label: "Pendientes",
+      value: String(pendingPayments + pendingProduction),
+      icon: "!",
+      details: [`${pendingPayments} pago`, `${pendingProduction} producción`]
+    }
+  ];
+}
 
 export function Dashboard() {
   const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
@@ -350,13 +481,25 @@ export function Dashboard() {
     showToast("Esta acción se implementará en el siguiente módulo.");
   };
 
+  const liveMetrics = useMemo(() => {
+    const hasLiveOrders = orderList.some((order) => Boolean(order.createdAt));
+    return hasLiveOrders ? buildLiveMetrics(orderList) : fallbackMetrics;
+  }, [orderList]);
+  const liveChartData = useMemo(() => {
+    const nextChartData = buildLiveChartData(orderList);
+    const hasLiveData = nextChartData.weekly.some((point) => point.pedidos > 0) ||
+      nextChartData.yearly.some((point) => point.pedidos > 0);
+
+    return hasLiveData ? nextChartData : chartData;
+  }, [orderList]);
+
   const renderActiveSection = () => {
     if (activeSection === "inicio") {
       return (
         <HomeSection
-          chartData={chartData}
+          chartData={liveChartData}
           chats={chats}
-          metrics={metrics}
+          metrics={liveMetrics}
           orders={orderList}
           stock={stockList}
           onOpenConversations={() =>

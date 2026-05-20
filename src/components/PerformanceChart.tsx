@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { ChartData, MonthKey, Period } from "@/types";
 import { capitalize, formatCurrency, months } from "@/lib/format";
+import type { ChartData, MonthKey, Period } from "@/types";
 
 interface PerformanceChartProps {
   data: ChartData;
@@ -9,25 +9,25 @@ interface PerformanceChartProps {
 const periodCopy: Record<Period, { title: string; description: (month: MonthKey) => string }> = {
   weekly: {
     title: "Rendimiento semanal",
-    description: () => "Ventas en bolivianos y cantidad de prendas vendidas por día."
+    description: () => "Resumen de ventas, pedidos y prendas por día."
   },
   monthly: {
     title: "Rendimiento mensual",
-    description: (month) => `Ventas en bolivianos y prendas vendidas durante ${capitalize(month)}.`
+    description: (month) => `Resumen de ventas, pedidos y prendas durante ${capitalize(month)}.`
   },
   yearly: {
     title: "Rendimiento anual",
-    description: () => "Comparación mensual de ventas, prendas y pedidos del año."
+    description: () => "Resumen mensual de ventas, pedidos y prendas del año."
   }
 };
 
 export function PerformanceChart({ data }: PerformanceChartProps) {
   const [period, setPeriod] = useState<Period>("weekly");
-  const [month, setMonth] = useState<MonthKey>("marzo");
+  const [month, setMonth] = useState<MonthKey>(months[new Date().getMonth()] ?? "enero");
   const [isMonthOpen, setIsMonthOpen] = useState(false);
 
   const currentData = period === "monthly" ? data.monthly[month] : data[period];
-  const maxSales = Math.max(...currentData.map((item) => item.ventas));
+  const maxSales = Math.max(1, ...currentData.map((item) => item.ventas));
 
   const totals = useMemo(
     () =>
@@ -40,6 +40,10 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
         { ventas: 0, prendas: 0, pedidos: 0 }
       ),
     [currentData]
+  );
+  const bestPoint = currentData.reduce(
+    (best, item) => (item.ventas > best.ventas ? item : best),
+    currentData[0] ?? { label: "Sin datos", ventas: 0, prendas: 0, pedidos: 0 }
   );
 
   return (
@@ -94,29 +98,48 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
         </div>
       </div>
 
-      <div className="chart-shell">
-        <div className="chart-summary">
-          <span className="mini-stat">{formatCurrency(totals.ventas)} vendidos</span>
-          <span className="mini-stat">{totals.prendas} prendas</span>
-          <span className="mini-stat">{totals.pedidos} pedidos</span>
+      <div className="chart-shell performance-shell">
+        <div className="performance-summary">
+          <div>
+            <span>Total vendido</span>
+            <strong>{formatCurrency(totals.ventas)}</strong>
+          </div>
+          <div>
+            <span>Prendas</span>
+            <strong>{totals.prendas}</strong>
+          </div>
+          <div>
+            <span>Pedidos</span>
+            <strong>{totals.pedidos}</strong>
+          </div>
+          <div>
+            <span>Mejor resultado</span>
+            <strong>{bestPoint.ventas > 0 ? bestPoint.label : "Sin ventas"}</strong>
+          </div>
         </div>
-        <div className={`chart ${period === "yearly" ? "yearly" : ""}`}>
+
+        <div className="performance-list">
           {currentData.map((item) => {
-            const height = Math.round((item.ventas / maxSales) * 185);
+            const width = Math.max(4, Math.round((item.ventas / maxSales) * 100));
 
             return (
-              <div className="bar-wrap" key={item.label}>
-                <div className="bar-value">
-                  {formatCurrency(item.ventas)}
+              <div className="performance-row" key={item.label}>
+                <div className="performance-row-label">
+                  <strong>{item.label}</strong>
+                  <span>{item.pedidos} {item.pedidos === 1 ? "pedido" : "pedidos"}</span>
+                </div>
+                <div className="performance-track">
+                  <div
+                    aria-label={`${item.label}: ${formatCurrency(item.ventas)}, ${item.prendas} prendas, ${item.pedidos} pedidos`}
+                    className="performance-fill"
+                    style={{ width: `${width}%` }}
+                    title={`${item.label}: ${formatCurrency(item.ventas)} · ${item.prendas} prendas · ${item.pedidos} pedidos`}
+                  />
+                </div>
+                <div className="performance-row-value">
+                  <strong>{formatCurrency(item.ventas)}</strong>
                   <span>{item.prendas} prendas</span>
                 </div>
-                <div
-                  aria-label={`${item.label}: ${formatCurrency(item.ventas)}, ${item.prendas} prendas, ${item.pedidos} pedidos`}
-                  className="bar"
-                  style={{ height }}
-                  title={`${item.label}: ${formatCurrency(item.ventas)} · ${item.prendas} prendas · ${item.pedidos} pedidos`}
-                />
-                <div className="bar-day">{item.label}</div>
               </div>
             );
           })}

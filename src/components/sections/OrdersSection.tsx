@@ -99,11 +99,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
   const customWebOrders = orders.filter((order) => order.type === "Personalizada" && order.source === "Web personaliza");
   const readyOrders = orders.filter((order) => order.status === "Lista para enviar").length;
   const pendingPayments = orders.filter((order) => order.payment !== "Pago completo").length;
-  const selectedOrder =
-    preparationOrders.find((order) => order.id === selectedOrderId) ??
-    preparationOrders[0] ??
-    visibleOrders.find((order) => order.id === selectedOrderId) ??
-    visibleOrders[0];
+  const selectedOrder = selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined;
   const selectedItems = selectedOrder ? orderItems(selectedOrder) : [];
   const selectedTotal = selectedOrder?.total ?? selectedItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
@@ -362,7 +358,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           ) : (
             <div className="empty-state">
               <strong>Selecciona un pedido</strong>
-              <p>El detalle aparecerá aquí con prendas, total, fecha y hora.</p>
+              <p>Elige un pedido de la cola para ver prendas, total, fecha, hora, pago y referencias.</p>
             </div>
           )}
         </aside>

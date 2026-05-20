@@ -1292,6 +1292,87 @@ body.dark .btn.primary {
   margin-bottom: 16px;
 }
 
+.performance-shell {
+  min-height: 0;
+  padding: 16px;
+  overflow: visible;
+}
+
+.performance-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.performance-summary div {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.performance-summary span,
+.performance-row-label span,
+.performance-row-value span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.performance-summary strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 18px;
+}
+
+.performance-list {
+  display: grid;
+  gap: 10px;
+}
+
+.performance-row {
+  display: grid;
+  grid-template-columns: 84px minmax(150px, 1fr) 118px;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+
+.performance-row-label strong {
+  display: block;
+  font-size: 14px;
+}
+
+.performance-track {
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-solid);
+}
+
+.performance-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--primary));
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.18);
+}
+
+.performance-row-value {
+  text-align: right;
+}
+
+.performance-row-value strong {
+  display: block;
+  font-size: 14px;
+}
+
 .chart {
   height: 250px;
   display: flex;
@@ -2346,6 +2427,15 @@ body.dark .field select option {
   }
 
   .order-line-numbers {
+    text-align: left;
+  }
+
+  .performance-summary,
+  .performance-row {
+    grid-template-columns: 1fr;
+  }
+
+  .performance-row-value {
     text-align: left;
   }
 
