@@ -1,136 +1,149 @@
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import type { Product, StockItem } from "@/types";
 
-interface StockRow {
+const BASE_PRODUCT_ID = "base-polera-dtf";
+const BASE_PRODUCT_NAME = "Polera base DTF";
+const sizeOrder = ["M", "L", "XL"];
+const colorOrder = ["Blanco arena", "Negro"];
+
+interface BaseStockRow {
   id: string;
-  product_id: string;
   size: string;
   color: string;
   stock_quantity: number | null;
   min_stock: number | null;
-  products?: {
-    name?: string | null;
-  } | null;
 }
 
-function variantId(productId: string, color: string, size: string) {
-  return `${productId}::${color}::${size}`;
+function baseStockId(color: string, size: string) {
+  return `${BASE_PRODUCT_ID}::${color}::${size}`;
 }
 
-function rowToStockItem(row: StockRow): StockItem {
-  const productName = row.products?.name ?? row.product_id;
+function normalize(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
 
+function rowToStockItem(row: BaseStockRow): StockItem {
   return {
-    id: row.id || variantId(row.product_id, row.color, row.size),
-    productId: row.product_id,
-    productName,
+    id: row.id || baseStockId(row.color, row.size),
+    productId: BASE_PRODUCT_ID,
+    productName: BASE_PRODUCT_NAME,
     size: row.size,
     color: row.color,
-    item: `${productName} ${row.color} ${row.size}`,
+    item: `${BASE_PRODUCT_NAME} ${row.color} ${row.size}`,
     available: Number(row.stock_quantity ?? 0),
-    min: Number(row.min_stock ?? 0)
+    min: Number(row.min_stock ?? 1)
   };
 }
 
-export function fallbackStockForProducts(products: Product[]): StockItem[] {
-  return products.flatMap((product) => {
-    const color = product.colors[0] ?? "Color por confirmar";
-
-    return (product.sizes.length ? product.sizes : ["M", "L", "XL"]).map((size) => ({
-      id: variantId(product.id, color, size),
-      productId: product.id,
-      productName: product.name,
-      size,
-      color,
-      item: `${product.name} ${color} ${size}`,
-      available: 0,
-      min: 1
-    }));
+function sortStock(items: StockItem[]) {
+  return [...items].sort((first, second) => {
+    const colorDiff = colorOrder.indexOf(first.color) - colorOrder.indexOf(second.color);
+    if (colorDiff !== 0) return colorDiff;
+    return sizeOrder.indexOf(first.size) - sizeOrder.indexOf(second.size);
   });
 }
 
-async function syncProductSoldOut(productId: string) {
+export const defaultBaseStock: StockItem[] = sortStock([
+  { id: baseStockId("Blanco arena", "M"), productId: BASE_PRODUCT_ID, productName: BASE_PRODUCT_NAME, size: "M", color: "Blanco arena", item: `${BASE_PRODUCT_NAME} Blanco arena M`, available: 2, min: 1 },
+  { id: baseStockId("Blanco arena", "L"), productId: BASE_PRODUCT_ID, productName: BASE_PRODUCT_NAME, size: "L", color: "Blanco arena", item: `${BASE_PRODUCT_NAME} Blanco arena L`, available: 5, min: 1 },
+  { id: baseStockId("Blanco arena", "XL"), productId: BASE_PRODUCT_ID, productName: BASE_PRODUCT_NAME, size: "XL", color: "Blanco arena", item: `${BASE_PRODUCT_NAME} Blanco arena XL`, available: 3, min: 1 },
+  { id: baseStockId("Negro", "M"), productId: BASE_PRODUCT_ID, productName: BASE_PRODUCT_NAME, size: "M", color: "Negro", item: `${BASE_PRODUCT_NAME} Negro M`, available: 3, min: 1 },
+  { id: baseStockId("Negro", "L"), productId: BASE_PRODUCT_ID, productName: BASE_PRODUCT_NAME, size: "L", color: "Negro", item: `${BASE_PRODUCT_NAME} Negro L`, available: 3, min: 1 },
+  { id: baseStockId("Negro", "XL"), productId: BASE_PRODUCT_ID, productName: BASE_PRODUCT_NAME, size: "XL", color: "Negro", item: `${BASE_PRODUCT_NAME} Negro XL`, available: 2, min: 1 }
+]);
+
+function stockForProduct(product: Product, baseStock: StockItem[]) {
+  const productColors = new Set((product.colors.length ? product.colors : ["Negro"]).map(normalize));
+  const productSizes = new Set((product.sizes.length ? product.sizes : sizeOrder).map(normalize));
+
+  return baseStock.filter((item) => productColors.has(normalize(item.color)) && productSizes.has(normalize(item.size)));
+}
+
+async function syncDesignedProductsSoldOut(baseStock: StockItem[]) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return;
 
-  const { data, error } = await supabase
-    .from("product_variants")
-    .select("stock_quantity")
-    .eq("product_id", productId);
+  const { data, error } = await supabase.from("products").select("*");
+  if (error || !data) return;
 
-  if (error || !data?.length) return;
+  await Promise.all(
+    (data as Product[]).map(async (product) => {
+      const matchingStock = stockForProduct(product, baseStock);
+      if (!matchingStock.length) return;
 
-  const totalStock = data.reduce((sum, row) => sum + Number(row.stock_quantity ?? 0), 0);
-  await supabase.from("products").update({ is_sold_out: totalStock <= 0 }).eq("id", productId);
+      const totalAvailable = matchingStock.reduce((sum, item) => sum + item.available, 0);
+      await supabase.from("products").update({ is_sold_out: totalAvailable <= 0 }).eq("id", product.id);
+    })
+  );
 }
 
 export async function readStockItems(): Promise<StockItem[]> {
   const supabase = createSupabaseAdminClient();
-  if (!supabase) return [];
+  if (!supabase) return defaultBaseStock;
 
   const { data, error } = await supabase
-    .from("product_variants")
-    .select("id, product_id, size, color, stock_quantity, min_stock, products(name)")
-    .order("product_id", { ascending: true })
+    .from("base_garment_stock")
+    .select("id, size, color, stock_quantity, min_stock")
     .order("color", { ascending: true })
     .order("size", { ascending: true });
 
   if (error) {
-    console.warn("Supabase stock read failed.", error.message);
-    return [];
+    console.warn("Supabase base stock read failed.", error.message);
+    return defaultBaseStock;
   }
 
-  return (data as StockRow[]).map(rowToStockItem);
+  return sortStock((data as BaseStockRow[]).map(rowToStockItem));
 }
 
 export async function readStockByProductIds(productIds: string[]): Promise<Record<string, StockItem[]>> {
+  if (!productIds.length) return {};
+
   const supabase = createSupabaseAdminClient();
-  if (!supabase || !productIds.length) return {};
+  const baseStock = await readStockItems();
 
-  const { data, error } = await supabase
-    .from("product_variants")
-    .select("id, product_id, size, color, stock_quantity, min_stock, products(name)")
-    .in("product_id", productIds);
+  if (!supabase) return {};
 
-  if (error) {
-    console.warn("Supabase stock join failed.", error.message);
-    return {};
-  }
+  const { data, error } = await supabase.from("products").select("*").in("id", productIds);
+  if (error || !data) return {};
 
-  return (data as StockRow[]).map(rowToStockItem).reduce<Record<string, StockItem[]>>((itemsByProduct, item) => {
-    itemsByProduct[item.productId] = [...(itemsByProduct[item.productId] ?? []), item];
+  return (data as Product[]).reduce<Record<string, StockItem[]>>((itemsByProduct, product) => {
+    itemsByProduct[product.id] = stockForProduct(product, baseStock);
     return itemsByProduct;
   }, {});
 }
 
 export async function upsertStockItem(item: StockItem): Promise<StockItem[]> {
   const supabase = createSupabaseAdminClient();
-  if (!supabase) return [];
+  if (!supabase) return defaultBaseStock;
 
-  const { error } = await supabase.from("product_variants").upsert(
+  const { error } = await supabase.from("base_garment_stock").upsert(
     {
-      product_id: item.productId,
-      size: item.size,
       color: item.color,
+      size: item.size,
       stock_quantity: Math.max(0, item.available),
       min_stock: Math.max(0, item.min)
     },
-    { onConflict: "product_id,size,color" }
+    { onConflict: "color,size" }
   );
 
   if (error) throw new Error(error.message);
 
-  await syncProductSoldOut(item.productId);
-  return readStockItems();
+  const nextStock = await readStockItems();
+  await syncDesignedProductsSoldOut(nextStock);
+  return nextStock;
 }
 
 export async function adjustStockItem(itemId: string, delta: number): Promise<StockItem[]> {
   const supabase = createSupabaseAdminClient();
-  if (!supabase) return [];
+  if (!supabase) return defaultBaseStock;
 
   const { data: current, error: readError } = await supabase
-    .from("product_variants")
-    .select("id, product_id, stock_quantity")
+    .from("base_garment_stock")
+    .select("id, stock_quantity")
     .eq("id", itemId)
     .single();
 
@@ -138,12 +151,13 @@ export async function adjustStockItem(itemId: string, delta: number): Promise<St
 
   const nextQuantity = Math.max(0, Number(current.stock_quantity ?? 0) + delta);
   const { error: updateError } = await supabase
-    .from("product_variants")
+    .from("base_garment_stock")
     .update({ stock_quantity: nextQuantity })
     .eq("id", itemId);
 
   if (updateError) throw new Error(updateError.message);
 
-  await syncProductSoldOut(current.product_id);
-  return readStockItems();
+  const nextStock = await readStockItems();
+  await syncDesignedProductsSoldOut(nextStock);
+  return nextStock;
 }

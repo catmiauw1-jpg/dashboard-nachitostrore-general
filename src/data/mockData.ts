@@ -150,44 +150,64 @@ export const chartData: ChartData = {
 
 export const stockData: StockItem[] = [
   {
-    id: "prod-oversize-hueso::Blanco hueso::M",
-    productId: "prod-oversize-hueso",
-    productName: "Oversize blanco hueso",
+    id: "base-polera-dtf::Blanco arena::M",
+    productId: "base-polera-dtf",
+    productName: "Polera base DTF",
     size: "M",
-    color: "Blanco hueso",
-    item: "Oversize blanco hueso Blanco hueso M",
+    color: "Blanco arena",
+    item: "Polera base DTF Blanco arena M",
     available: 2,
-    min: 3
+    min: 1
   },
   {
-    id: "prod-oversize-hueso::Negro::L",
-    productId: "prod-oversize-hueso",
-    productName: "Oversize blanco hueso",
+    id: "base-polera-dtf::Blanco arena::L",
+    productId: "base-polera-dtf",
+    productName: "Polera base DTF",
+    size: "L",
+    color: "Blanco arena",
+    item: "Polera base DTF Blanco arena L",
+    available: 5,
+    min: 1
+  },
+  {
+    id: "base-polera-dtf::Blanco arena::XL",
+    productId: "base-polera-dtf",
+    productName: "Polera base DTF",
+    size: "XL",
+    color: "Blanco arena",
+    item: "Polera base DTF Blanco arena XL",
+    available: 3,
+    min: 1
+  },
+  {
+    id: "base-polera-dtf::Negro::M",
+    productId: "base-polera-dtf",
+    productName: "Polera base DTF",
+    size: "M",
+    color: "Negro",
+    item: "Polera base DTF Negro M",
+    available: 3,
+    min: 1
+  },
+  {
+    id: "base-polera-dtf::Negro::L",
+    productId: "base-polera-dtf",
+    productName: "Polera base DTF",
     size: "L",
     color: "Negro",
-    item: "Oversize blanco hueso Negro L",
-    available: 8,
-    min: 3
+    item: "Polera base DTF Negro L",
+    available: 3,
+    min: 1
   },
   {
-    id: "prod-regular-blanca::Blanco::S",
-    productId: "prod-regular-blanca",
-    productName: "Regular blanco básico",
-    size: "S",
-    color: "Blanco",
-    item: "Regular blanco básico Blanco S",
-    available: 1,
-    min: 4
-  },
-  {
-    id: "prod-negra-minimal::Negro::M",
-    productId: "prod-negra-minimal",
-    productName: "Polera negra minimal",
-    size: "M",
+    id: "base-polera-dtf::Negro::XL",
+    productId: "base-polera-dtf",
+    productName: "Polera base DTF",
+    size: "XL",
     color: "Negro",
-    item: "Polera negra minimal Negro M",
-    available: 6,
-    min: 4
+    item: "Polera base DTF Negro XL",
+    available: 2,
+    min: 1
   }
 ];
 

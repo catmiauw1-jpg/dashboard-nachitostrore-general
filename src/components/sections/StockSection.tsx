@@ -10,108 +10,93 @@ interface StockSectionProps {
   onAdjustStock: (itemId: string, delta: number) => void | Promise<void>;
 }
 
-function stockId(productId: string, color: string, size: string) {
-  return `${productId}::${color}::${size}`;
+const baseColors = ["Blanco arena", "Negro"];
+const baseSizes = ["M", "L", "XL"];
+const baseProductId = "base-polera-dtf";
+const baseProductName = "Polera base DTF";
+
+function stockId(color: string, size: string) {
+  return `${baseProductId}::${color}::${size}`;
 }
 
-export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: StockSectionProps) {
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const selectedProduct = useMemo(
-    () => products.find((product) => product.id === productId),
-    [productId, products]
-  );
-  const [size, setSize] = useState(selectedProduct?.sizes[0] ?? "M");
-  const [color, setColor] = useState(selectedProduct?.colors[0] ?? "Negro");
-  const [available, setAvailable] = useState(5);
-  const [min, setMin] = useState(3);
+export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSectionProps) {
+  const [color, setColor] = useState(baseColors[0]);
+  const [size, setSize] = useState(baseSizes[0]);
+  const [available, setAvailable] = useState(0);
+  const [min, setMin] = useState(1);
 
-  const stockByProduct = useMemo(
+  const stockByColor = useMemo(
     () =>
       stock.reduce<Record<string, StockItem[]>>((items, item) => {
-        items[item.productId] = [...(items[item.productId] ?? []), item];
+        items[item.color] = [...(items[item.color] ?? []), item];
         return items;
       }, {}),
     [stock]
   );
   const selectedVariant = useMemo(
-    () => stock.find((item) => item.productId === productId && item.size === size && item.color === color),
-    [color, productId, size, stock]
+    () => stock.find((item) => item.size === size && item.color === color),
+    [color, size, stock]
   );
+  const totalUnits = stock.reduce((sum, item) => sum + item.available, 0);
+  const lowStockCount = stock.filter((item) => item.available <= item.min).length;
+  const emptyStockCount = stock.filter((item) => item.available === 0).length;
 
   useEffect(() => {
-    if (!products.length) return;
-    if (products.some((product) => product.id === productId)) return;
+    if (!selectedVariant) {
+      setAvailable(0);
+      setMin(1);
+      return;
+    }
 
-    const nextProduct = products[0];
-    setProductId(nextProduct.id);
-    setSize(nextProduct.sizes[0] ?? "M");
-    setColor(nextProduct.colors[0] ?? "Negro");
-  }, [productId, products]);
-
-  useEffect(() => {
-    if (!selectedVariant) return;
     setAvailable(selectedVariant.available);
     setMin(selectedVariant.min);
   }, [selectedVariant]);
 
-  const handleProductChange = (nextProductId: string) => {
-    const nextProduct = products.find((product) => product.id === nextProductId);
-
-    setProductId(nextProductId);
-    setSize(nextProduct?.sizes[0] ?? "M");
-    setColor(nextProduct?.colors[0] ?? "Negro");
-  };
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedProduct) return;
-
     void onUpdateStock({
-      id: selectedVariant?.id ?? stockId(selectedProduct.id, color, size),
-      productId: selectedProduct.id,
-      productName: selectedProduct.name,
+      id: selectedVariant?.id ?? stockId(color, size),
+      productId: baseProductId,
+      productName: baseProductName,
       size,
       color,
-      item: `${selectedProduct.name} ${color} ${size}`,
+      item: `${baseProductName} ${color} ${size}`,
       available: Math.max(0, available),
       min: Math.max(0, min)
     });
   };
 
-  const lowStockCount = stock.filter((item) => item.available <= item.min).length;
-  const emptyStockCount = stock.filter((item) => item.available === 0).length;
-
   return (
     <section className="section-workspace">
       <header className="section-head">
         <div>
-          <span className="section-kicker">Inventario</span>
-          <h2>Stock</h2>
-          <p>Controla unidades disponibles por producto, talla y color.</p>
+          <span className="section-kicker">Inventario base</span>
+          <h2>Stock de prendas para DTF</h2>
+          <p>Controla solo las poleras base disponibles. Los diseños se producen a pedido.</p>
         </div>
       </header>
 
       <div className="section-summary-grid">
         <article className="section-summary-card">
-          <span>Variantes</span>
-          <strong>{stock.length}</strong>
-          <small>Tallas y colores</small>
+          <span>Colores base</span>
+          <strong>{baseColors.length}</strong>
+          <small>Blanco arena y negro</small>
+        </article>
+        <article className="section-summary-card">
+          <span>Unidades</span>
+          <strong>{totalUnits}</strong>
+          <small>Prendas listas</small>
         </article>
         <article className="section-summary-card">
           <span>Stock bajo</span>
           <strong>{lowStockCount}</strong>
-          <small>Reponer pronto</small>
+          <small>En mínimo o menos</small>
         </article>
         <article className="section-summary-card">
           <span>Sin unidades</span>
           <strong>{emptyStockCount}</strong>
-          <small>En cero</small>
-        </article>
-        <article className="section-summary-card">
-          <span>Unidades</span>
-          <strong>{stock.reduce((sum, item) => sum + item.available, 0)}</strong>
-          <small>Disponibles</small>
+          <small>Tallas en cero</small>
         </article>
       </div>
 
@@ -119,29 +104,18 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h3>Actualizar variante</h3>
-              <p>Elige una prenda, talla y color para definir su stock real.</p>
+              <h3>Ajustar prenda base</h3>
+              <p>Elige color y talla. Este stock se usa para todos los diseños DTF.</p>
             </div>
-            <span className="badge accent">Inventario</span>
+            <span className="badge accent">Base</span>
           </div>
 
           <form className="product-form" onSubmit={handleSubmit}>
-            <label className="field wide-field">
-              <span>Producto</span>
-              <select value={productId} onChange={(event) => handleProductChange(event.target.value)}>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
             <div className="form-grid two-columns">
               <label className="field">
-                <span>Talla</span>
-                <select value={size} onChange={(event) => setSize(event.target.value)}>
-                  {(selectedProduct?.sizes ?? ["S", "M", "L", "XL"]).map((option) => (
+                <span>Color base</span>
+                <select value={color} onChange={(event) => setColor(event.target.value)}>
+                  {baseColors.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -150,9 +124,9 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
               </label>
 
               <label className="field">
-                <span>Color</span>
-                <select value={color} onChange={(event) => setColor(event.target.value)}>
-                  {(selectedProduct?.colors ?? ["Blanco", "Negro"]).map((option) => (
+                <span>Talla</span>
+                <select value={size} onChange={(event) => setSize(event.target.value)}>
+                  {baseSizes.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -177,7 +151,7 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
             </div>
 
             <button className="btn primary" type="submit">
-              Guardar variante
+              Guardar stock base
             </button>
           </form>
         </article>
@@ -185,66 +159,68 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h3>Stock actual</h3>
-              <p>Ajustes rápidos por prenda, talla y color.</p>
+              <h3>Prendas disponibles</h3>
+              <p>Vista rápida para saber qué bases puedes producir hoy.</p>
             </div>
           </div>
 
-          <div className="stock-product-list">
-            {products.map((product) => {
-              const variants = stockByProduct[product.id] ?? [];
+          <div className="base-stock-board">
+            {baseColors.map((baseColor) => {
+              const variants = baseSizes.map((baseSize) => {
+                return stockByColor[baseColor]?.find((item) => item.size === baseSize) ?? {
+                  id: stockId(baseColor, baseSize),
+                  productId: baseProductId,
+                  productName: baseProductName,
+                  size: baseSize,
+                  color: baseColor,
+                  item: `${baseProductName} ${baseColor} ${baseSize}`,
+                  available: 0,
+                  min: 1
+                };
+              });
+              const colorTotal = variants.reduce((sum, item) => sum + item.available, 0);
 
               return (
-                <div className="stock-product-block" key={product.id}>
-                  <div className="stock-product-head">
+                <div className="base-stock-card" key={baseColor}>
+                  <div className="base-stock-card-head">
                     <div>
-                      <h4>{product.name}</h4>
-                      <p>{variants.length ? `${variants.length} variantes controladas` : "Sin variantes de stock"}</p>
+                      <span className={`base-color-swatch ${baseColor === "Negro" ? "black" : "sand"}`} />
+                      <h4>{baseColor}</h4>
                     </div>
-                    <span className={`badge ${product.isSoldOut ? "danger" : "success"}`}>
-                      {product.isSoldOut ? "Agotado" : "Disponible"}
-                    </span>
+                    <strong>{colorTotal} uds</strong>
                   </div>
 
-                  {variants.length ? (
-                    <div className="variant-grid">
-                      {variants.map((item) => {
-                        const low = item.available <= item.min;
+                  <div className="base-size-grid">
+                    {variants.map((item) => {
+                      const low = item.available <= item.min;
 
-                        return (
-                          <div className="variant-row" key={item.id}>
-                            <div>
-                              <strong>{item.color}</strong>
-                              <span>{item.size}</span>
-                            </div>
-                            <div className="variant-stock-meta">
-                              <span>{item.available} uds</span>
-                              <small>Min {item.min}</small>
-                            </div>
-                            <div className="stock-controls">
-                              <button
-                                className="btn icon small-icon-btn"
-                                onClick={() => onAdjustStock(item.id, -1)}
-                                type="button"
-                              >
-                                -
-                              </button>
-                              <span className={`badge ${low ? "danger" : "success"}`}>{low ? "Bajo" : "OK"}</span>
-                              <button
-                                className="btn icon small-icon-btn"
-                                onClick={() => onAdjustStock(item.id, 1)}
-                                type="button"
-                              >
-                                +
-                              </button>
-                            </div>
+                      return (
+                        <div className={`base-size-card ${low ? "is-low" : ""}`} key={item.id}>
+                          <div>
+                            <span>{item.size}</span>
+                            <strong>{item.available}</strong>
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="empty-stock-note">Crea la primera variante usando el formulario.</p>
-                  )}
+                          <small>{low ? "Bajo" : "OK"}</small>
+                          <div className="stock-controls">
+                            <button
+                              className="btn icon small-icon-btn"
+                              onClick={() => onAdjustStock(item.id, -1)}
+                              type="button"
+                            >
+                              -
+                            </button>
+                            <button
+                              className="btn icon small-icon-btn"
+                              onClick={() => onAdjustStock(item.id, 1)}
+                              type="button"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
