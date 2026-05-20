@@ -275,6 +275,13 @@ body.dark .menu button.active {
   box-shadow: var(--shadow-soft);
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+  box-shadow: none;
+}
+
 .btn.primary {
   border-color: transparent;
   background: linear-gradient(135deg, var(--primary), var(--accent));

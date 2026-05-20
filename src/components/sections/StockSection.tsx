@@ -7,7 +7,7 @@ interface StockSectionProps {
   products: Product[];
   stock: StockItem[];
   onUpdateStock: (item: StockItem) => void | Promise<void>;
-  onAdjustStock: (itemId: string, delta: number) => void | Promise<void>;
+  onAdjustStock: (item: StockItem, delta: number) => void | Promise<void>;
 }
 
 const defaultColors = ["Blanco arena", "Negro"];
@@ -35,32 +35,37 @@ function resolveColorName(value: string, colors: string[]) {
 }
 
 export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSectionProps) {
+  const [visibleStock, setVisibleStock] = useState(stock);
   const colors = useMemo(
-    () => [...new Set([...defaultColors, ...stock.map((item) => item.color)].filter(Boolean))],
-    [stock]
+    () => [...new Set([...defaultColors, ...visibleStock.map((item) => item.color)].filter(Boolean))],
+    [visibleStock]
   );
   const [color, setColor] = useState(defaultColors[0]);
   const [size, setSize] = useState(baseSizes[0]);
   const [quantity, setQuantity] = useState(1);
   const [min, setMin] = useState(1);
 
+  useEffect(() => {
+    setVisibleStock(stock);
+  }, [stock]);
+
   const stockByColor = useMemo(
     () =>
-      stock.reduce<Record<string, StockItem[]>>((items, item) => {
+      visibleStock.reduce<Record<string, StockItem[]>>((items, item) => {
         items[item.color] = [...(items[item.color] ?? []), item];
         return items;
       }, {}),
-    [stock]
+    [visibleStock]
   );
   const selectedColor = useMemo(() => resolveColorName(color, colors), [color, colors]);
   const selectedVariant = useMemo(
-    () => stock.find((item) => item.size === size && normalizeColor(item.color) === normalizeColor(selectedColor)),
-    [selectedColor, size, stock]
+    () => visibleStock.find((item) => item.size === size && normalizeColor(item.color) === normalizeColor(selectedColor)),
+    [selectedColor, size, visibleStock]
   );
-  const totalUnits = stock.reduce((sum, item) => sum + item.available, 0);
-  const lowStockCount = stock.filter((item) => item.available <= item.min).length;
-  const emptyStockCount = stock.filter((item) => item.available === 0).length;
-  const nextAvailable = (selectedVariant?.available ?? 0) + Math.max(0, quantity);
+  const totalUnits = visibleStock.reduce((sum, item) => sum + item.available, 0);
+  const lowStockCount = visibleStock.filter((item) => item.available <= item.min).length;
+  const emptyStockCount = visibleStock.filter((item) => item.available === 0).length;
+  const nextAvailable = selectedColor ? (selectedVariant?.available ?? 0) + Math.max(0, quantity) : 0;
 
   useEffect(() => {
     setMin(selectedVariant?.min ?? 1);
@@ -82,8 +87,41 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
       min: Math.max(0, min)
     });
 
+    setVisibleStock((currentStock) => {
+      const nextItem = {
+        id: selectedVariant?.id ?? stockId(cleanColor, size),
+        productId: baseProductId,
+        productName: baseProductName,
+        size,
+        color: cleanColor,
+        item: `${baseProductName} ${cleanColor} ${size}`,
+        available: nextAvailable,
+        min: Math.max(0, min)
+      };
+      const exists = currentStock.some((stockItem) => stockItem.id === nextItem.id);
+
+      if (!exists) return [nextItem, ...currentStock];
+
+      return currentStock.map((stockItem) => (stockItem.id === nextItem.id ? nextItem : stockItem));
+    });
+    setColor("");
+    setSize(baseSizes[0]);
     setQuantity(1);
-    setColor(cleanColor);
+    setMin(1);
+  };
+
+  const handleQuickAdjust = (item: StockItem, delta: number) => {
+    const nextItem = { ...item, available: Math.max(0, item.available + delta) };
+
+    setVisibleStock((currentStock) => {
+      const exists = currentStock.some((stockItem) => stockItem.id === item.id);
+
+      if (!exists) return [nextItem, ...currentStock];
+
+      return currentStock.map((stockItem) => (stockItem.id === item.id ? nextItem : stockItem));
+    });
+
+    void onAdjustStock(item, delta);
   };
 
   return (
@@ -184,7 +222,7 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
               </div>
             </div>
 
-            <button className="btn primary" type="submit">
+            <button className="btn primary" disabled={!selectedColor || quantity <= 0} type="submit">
               Sumar al stock
             </button>
           </form>
@@ -238,14 +276,15 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
                           <div className="stock-controls">
                             <button
                               className="btn icon small-icon-btn"
-                              onClick={() => onAdjustStock(item.id, -1)}
+                              disabled={item.available <= 0}
+                              onClick={() => handleQuickAdjust(item, -1)}
                               type="button"
                             >
                               -
                             </button>
                             <button
                               className="btn icon small-icon-btn"
-                              onClick={() => onAdjustStock(item.id, 1)}
+                              onClick={() => handleQuickAdjust(item, 1)}
                               type="button"
                             >
                               +

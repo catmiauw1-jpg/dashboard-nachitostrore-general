@@ -215,19 +215,24 @@ export function Dashboard() {
     }
   };
 
-  const handleAdjustStock = async (itemId: string, delta: number) => {
-    setStockList((currentStock) =>
-      currentStock.map((item) =>
-        item.id === itemId ? { ...item, available: Math.max(0, item.available + delta) } : item
-      )
-    );
+  const handleAdjustStock = async (item: StockItem, delta: number) => {
+    const stockExists = stockList.some((stockItem) => stockItem.id === item.id);
+    const nextItem = { ...item, available: Math.max(0, item.available + delta) };
+
+    setStockList((currentStock) => {
+      const exists = currentStock.some((stockItem) => stockItem.id === item.id);
+
+      if (!exists) return [nextItem, ...currentStock];
+
+      return currentStock.map((stockItem) => (stockItem.id === item.id ? nextItem : stockItem));
+    });
 
     try {
       await applyStockResponse(
         await fetch("/api/stock", {
-          method: "POST",
+          method: stockExists ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: itemId, delta })
+          body: JSON.stringify(stockExists ? { id: item.id, delta } : nextItem)
         })
       );
     } catch {
