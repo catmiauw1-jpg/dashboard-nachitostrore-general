@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
 import { HomeSection } from "@/components/sections/HomeSection";
@@ -34,6 +34,53 @@ export function Dashboard() {
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [toast, setToast] = useState("");
   const stockSaveVersionRef = useRef<Record<string, number>>({});
+  const orderIdsRef = useRef(new Set(orders.map((order) => order.id)));
+  const hasLoadedOrdersRef = useRef(false);
+
+  const showToast = (message: string) => {
+    setToast(message);
+  };
+
+  const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
+    try {
+      const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/stock"),
+        fetch("/api/orders")
+      ]);
+
+      if (productsResponse.ok) {
+        const nextProducts = (await productsResponse.json()) as Product[];
+        if (nextProducts.length) setProductList(nextProducts);
+      }
+
+      if (stockResponse.ok) {
+        const data = (await stockResponse.json()) as { stock: StockItem[]; products: Product[] };
+        setStockList(data.stock);
+        if (data.products.length) setProductList(data.products);
+      }
+
+      if (ordersResponse.ok) {
+        const nextOrders = (await ordersResponse.json()) as Order[];
+        const previousIds = orderIdsRef.current;
+        const newOrders = nextOrders.filter((order) => !previousIds.has(order.id));
+
+        setOrderList(nextOrders);
+        orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
+
+        if (options?.notifyNewOrders && hasLoadedOrdersRef.current && newOrders.length) {
+          const label = newOrders.length === 1 ? newOrders[0].id : `${newOrders.length} pedidos`;
+          showToast(`Nuevo pedido registrado: ${label}.`);
+        }
+
+        hasLoadedOrdersRef.current = true;
+      }
+    } catch {
+      if (options?.showError) {
+        showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
+      }
+    }
+  }, []);
 
   useEffect(() => {
     document.body.classList.toggle("dark", isDark);
@@ -62,6 +109,8 @@ export function Dashboard() {
         if (ordersResponse.ok) {
           const nextOrders = (await ordersResponse.json()) as Order[];
           if (nextOrders.length) setOrderList(nextOrders);
+          orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
+          hasLoadedOrdersRef.current = true;
         }
       } catch {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -71,9 +120,26 @@ export function Dashboard() {
     void loadProducts();
   }, []);
 
-  const showToast = (message: string) => {
-    setToast(message);
-  };
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshBusinessData({ notifyNewOrders: true });
+      }
+    }, 5000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshBusinessData({ notifyNewOrders: true });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshBusinessData]);
 
   const toggleBot = (index: number) => {
     setChats((currentChats) =>
