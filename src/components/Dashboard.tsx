@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
 import { HomeSection } from "@/components/sections/HomeSection";
@@ -33,6 +33,7 @@ export function Dashboard() {
   const [stockList, setStockList] = useState<StockItem[]>(stockData);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const stockSaveVersionRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     document.body.classList.toggle("dark", isDark);
@@ -192,15 +193,19 @@ export function Dashboard() {
     }
   };
 
-  const applyStockResponse = async (response: Response) => {
+  const applyStockResponse = async (response: Response, shouldApply = () => true) => {
     if (!response.ok) throw new Error("No se pudo guardar el stock");
 
     const data = (await response.json()) as { stock: StockItem[]; products: Product[] };
-    setStockList(data.stock);
-    if (data.products.length) setProductList(data.products);
+    if (shouldApply()) {
+      setStockList(data.stock);
+      if (data.products.length) setProductList(data.products);
+    }
   };
 
   const handleUpdateStock = async (item: StockItem) => {
+    const nextVersion = (stockSaveVersionRef.current[item.id] ?? 0) + 1;
+    stockSaveVersionRef.current[item.id] = nextVersion;
     setStockList((currentStock) => {
       const exists = currentStock.some((stockItem) => stockItem.id === item.id);
 
@@ -215,7 +220,8 @@ export function Dashboard() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(item)
-        })
+        }),
+        () => stockSaveVersionRef.current[item.id] === nextVersion
       );
       showToast(`Stock actualizado: ${item.item}.`);
     } catch {
