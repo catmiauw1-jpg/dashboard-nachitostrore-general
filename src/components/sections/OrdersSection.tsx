@@ -10,10 +10,10 @@ interface OrdersSectionProps {
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
 }
 
-type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos" | "Historial";
+type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos" | "Entregados" | "Cancelados";
 
 const orderFilters: Array<"Todos" | OrderType> = ["Todos", "Catálogo", "Personalizada"];
-const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos", "Historial"];
+const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos", "Entregados", "Cancelados"];
 const paymentStatuses: PaymentStatus[] = ["Pendiente", "50% pagado", "Pago completo"];
 const orderStatuses: OrderStatus[] = [
   "Esperando pago",
@@ -92,7 +92,8 @@ function orderSearchText(order: Order) {
 function matchesStage(order: Order, stage: StageFilter) {
   if (stage === "Activos") return order.status !== "Entregado" && order.status !== "Cancelado";
   if (stage === "Listos") return order.status === "Lista para enviar";
-  if (stage === "Historial") return order.status === "Entregado" || order.status === "Cancelado";
+  if (stage === "Entregados") return order.status === "Entregado";
+  if (stage === "Cancelados") return order.status === "Cancelado";
   return order.status === stage;
 }
 
@@ -159,7 +160,8 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
   const updateStatus = (orderId: string, status: OrderStatus) => {
     onUpdateOrder(orderId, { status });
-    if (status === "Cancelado" || status === "Entregado") setActiveStage("Historial");
+    if (status === "Cancelado") setActiveStage("Cancelados");
+    if (status === "Entregado") setActiveStage("Entregados");
   };
 
   const downloadReference = async (reference: string) => {
