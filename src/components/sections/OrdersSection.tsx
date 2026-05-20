@@ -310,6 +310,16 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                 </div>
               </div>
 
+              {selectedOrder.notes && selectedOrder.type === "Catálogo" ? (
+                <div className="order-detail-block">
+                  <div className="order-detail-title">
+                    <h4>Notas del pedido</h4>
+                    <span>Web</span>
+                  </div>
+                  <p className="order-detail-notes">{selectedOrder.notes}</p>
+                </div>
+              ) : null}
+
               {selectedOrder.type === "Personalizada" ? (
                 <div className="order-detail-block">
                   <div className="order-detail-title">
