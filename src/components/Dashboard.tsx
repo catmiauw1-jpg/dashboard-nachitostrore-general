@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
+import { CustomersSection } from "@/components/sections/CustomersSection";
 import { HomeSection } from "@/components/sections/HomeSection";
 import { OrdersSection } from "@/components/sections/OrdersSection";
 import { ProductsSection } from "@/components/sections/ProductsSection";
@@ -540,6 +541,10 @@ export function Dashboard() {
           onUpdateStock={handleUpdateStock}
         />
       );
+    }
+
+    if (activeSection === "clientes") {
+      return <CustomersSection orders={orderList} />;
     }
 
     return (
