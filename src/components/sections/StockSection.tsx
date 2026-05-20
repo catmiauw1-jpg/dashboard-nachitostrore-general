@@ -13,7 +13,7 @@ interface StockSectionProps {
 const defaultColors = ["Blanco arena", "Negro"];
 const baseSizes = ["M", "L", "XL"];
 const baseProductId = "base-polera-dtf";
-const baseProductName = "Polera base DTF";
+const baseProductName = "Polera para DTF";
 
 function stockId(color: string, size: string) {
   return `${baseProductId}::${color}::${size}`;
@@ -90,15 +90,15 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
     <section className="section-workspace">
       <header className="section-head">
         <div>
-          <span className="section-kicker">Inventario base</span>
-          <h2>Stock de prendas para DTF</h2>
-          <p>Controla solo las poleras base disponibles. Los diseños se producen a pedido.</p>
+          <span className="section-kicker">Inventario</span>
+          <h2>Stock de prendas</h2>
+          <p>Controla las poleras disponibles para producir diseños DTF a pedido.</p>
         </div>
       </header>
 
       <div className="section-summary-grid">
         <article className="section-summary-card">
-          <span>Colores base</span>
+          <span>Colores</span>
           <strong>{colors.length}</strong>
           <small>Colores disponibles</small>
         </article>
@@ -124,7 +124,7 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
           <div className="panel-header">
             <div>
               <h3>Registrar llegada de prendas</h3>
-              <p>Suma al stock cuando recibas poleras base. Si es otro color, escríbelo y se crea.</p>
+              <p>Suma al stock cuando recibas nuevas poleras. Si es otro color, escríbelo y se crea.</p>
             </div>
             <span className="badge accent">Entrada</span>
           </div>
@@ -194,7 +194,7 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
           <div className="panel-header">
             <div>
               <h3>Prendas disponibles</h3>
-              <p>Vista rápida para saber qué bases puedes producir hoy.</p>
+              <p>Vista rápida para saber qué prendas puedes producir hoy.</p>
             </div>
           </div>
 
