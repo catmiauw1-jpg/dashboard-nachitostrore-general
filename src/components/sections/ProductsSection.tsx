@@ -41,10 +41,11 @@ export function ProductsSection({
   const [basePrice, setBasePrice] = useState(150);
   const [colors, setColors] = useState(defaultColors);
   const [sizes, setSizes] = useState(defaultSizes);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState("");
-  const [currentImageUrl, setCurrentImageUrl] = useState("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
+  const [currentImageUrls, setCurrentImageUrls] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const imagePreviews = [...currentImageUrls, ...newImagePreviews];
 
   const resetForm = () => {
     setEditingProductId(null);
@@ -55,38 +56,53 @@ export function ProductsSection({
     setBasePrice(150);
     setColors(defaultColors);
     setSizes(defaultSizes);
-    setImageFile(null);
-    setImagePreview("");
-    setCurrentImageUrl("");
+    setImageFiles([]);
+    setNewImagePreviews([]);
+    setCurrentImageUrls([]);
   };
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    setImageFile(file);
+    const files = Array.from(event.target.files ?? []);
+    setImageFiles((currentFiles) => [...currentFiles, ...files]);
+    setNewImagePreviews((currentPreviews) => [
+      ...currentPreviews,
+      ...files.map((file) => URL.createObjectURL(file))
+    ]);
+    event.target.value = "";
+  };
 
-    if (!file) {
-      setImagePreview(currentImageUrl);
+  const removeImagePreview = (index: number) => {
+    if (index < currentImageUrls.length) {
+      setCurrentImageUrls((urls) => urls.filter((_, urlIndex) => urlIndex !== index));
       return;
     }
 
-    setImagePreview(URL.createObjectURL(file));
+    const newIndex = index - currentImageUrls.length;
+    setImageFiles((files) => files.filter((_, fileIndex) => fileIndex !== newIndex));
+    setNewImagePreviews((previews) => previews.filter((_, previewIndex) => previewIndex !== newIndex));
   };
 
-  const uploadImage = async () => {
-    if (!imageFile) return currentImageUrl || undefined;
+  const uploadImages = async () => {
+    if (!imageFiles.length) return currentImageUrls;
 
-    const formData = new FormData();
-    formData.append("image", imageFile);
+    const uploadedImages = await Promise.all(
+      imageFiles.map(async (file) => {
+        const formData = new FormData();
+        formData.append("image", file);
 
-    const response = await fetch("/api/uploads", {
-      method: "POST",
-      body: formData
-    });
+        const response = await fetch("/api/uploads", {
+          method: "POST",
+          body: formData
+        });
 
-    if (!response.ok) throw new Error("No se pudo subir la imagen");
+        if (!response.ok) throw new Error("No se pudo subir una imagen");
 
-    const data = (await response.json()) as { imageUrl: string };
-    return data.imageUrl;
+        const data = (await response.json()) as { imageUrl: string };
+        return data.imageUrl;
+      })
+    );
+
+    return [...currentImageUrls, ...uploadedImages];
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -98,7 +114,7 @@ export function ProductsSection({
     setIsSaving(true);
 
     try {
-      const imageUrl = await uploadImage();
+      const imageUrls = await uploadImages();
       const payload: Product = {
         id: editingProductId ?? `prod-${Date.now()}`,
         name: cleanName,
@@ -114,7 +130,8 @@ export function ProductsSection({
           .split(",")
           .map((size) => size.trim())
           .filter(Boolean),
-        imageUrl
+        imageUrl: imageUrls[0] ?? "",
+        imageUrls
       };
 
       if (editingProductId) {
@@ -138,9 +155,9 @@ export function ProductsSection({
     setBasePrice(product.basePrice);
     setColors(product.colors.join(", "));
     setSizes(product.sizes.join(", "));
-    setCurrentImageUrl(product.imageUrl ?? "");
-    setImagePreview(product.imageUrl ?? "");
-    setImageFile(null);
+    setCurrentImageUrls(product.imageUrls?.length ? product.imageUrls : product.imageUrl ? [product.imageUrl] : []);
+    setNewImagePreviews([]);
+    setImageFiles([]);
   };
 
   const handleDelete = async (product: Product) => {
@@ -236,13 +253,20 @@ export function ProductsSection({
             </label>
 
             <label className="field wide-field">
-              <span>Imagen del producto</span>
-              <input accept="image/*" type="file" onChange={handleImageChange} />
+              <span>Imágenes del producto</span>
+              <input accept="image/*" multiple type="file" onChange={handleImageChange} />
             </label>
 
-            {imagePreview ? (
-              <div className="image-preview">
-                <img src={imagePreview} alt="Vista previa del producto" />
+            {imagePreviews.length ? (
+              <div className="image-preview-grid">
+                {imagePreviews.map((preview, index) => (
+                  <div className="image-preview" key={`${preview}-${index}`}>
+                    <img src={preview} alt={`Vista previa ${index + 1} del producto`} />
+                    <button className="remove-image-btn" onClick={() => removeImagePreview(index)} type="button">
+                      Quitar
+                    </button>
+                  </div>
+                ))}
               </div>
             ) : null}
 
@@ -293,8 +317,13 @@ export function ProductsSection({
           {products.map((product) => (
             <article className="product-card web-style-product-card" key={product.id}>
               <div className="dashboard-product-visual">
-                {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.name} />
+                {(product.imageUrls?.[0] || product.imageUrl) ? (
+                  <>
+                    <img src={product.imageUrls?.[0] || product.imageUrl} alt={product.name} />
+                    {(product.imageUrls?.length ?? 0) > 1 ? (
+                      <span className="image-count-badge">{product.imageUrls?.length} fotos</span>
+                    ) : null}
+                  </>
                 ) : (
                   <span>PF</span>
                 )}

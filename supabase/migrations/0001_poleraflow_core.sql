@@ -23,6 +23,7 @@ create table if not exists public.products (
   colors text[] not null default '{}',
   sizes text[] not null default '{}',
   image_url text,
+  image_urls text[] not null default '{}',
   is_hidden boolean not null default false,
   is_sold_out boolean not null default false,
   created_at timestamptz not null default now(),

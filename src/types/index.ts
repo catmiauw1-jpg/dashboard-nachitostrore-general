@@ -83,6 +83,7 @@ export interface Product {
   colors: string[];
   sizes: string[];
   imageUrl?: string;
+  imageUrls?: string[];
   isHidden?: boolean;
   isSoldOut?: boolean;
 }

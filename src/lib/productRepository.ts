@@ -12,11 +12,14 @@ interface ProductRow {
   colors: string[] | null;
   sizes: string[] | null;
   image_url: string | null;
+  image_urls: string[] | null;
   is_hidden: boolean | null;
   is_sold_out: boolean | null;
 }
 
 function rowToProduct(row: ProductRow): Product {
+  const imageUrls = row.image_urls?.length ? row.image_urls : row.image_url ? [row.image_url] : [];
+
   return {
     id: row.id,
     name: row.name,
@@ -26,13 +29,16 @@ function rowToProduct(row: ProductRow): Product {
     basePrice: Number(row.base_price),
     colors: row.colors ?? [],
     sizes: row.sizes ?? [],
-    imageUrl: row.image_url ?? "",
+    imageUrl: row.image_url ?? imageUrls[0] ?? "",
+    imageUrls,
     isHidden: Boolean(row.is_hidden),
     isSoldOut: Boolean(row.is_sold_out)
   };
 }
 
 function productToRow(product: Product) {
+  const imageUrls = product.imageUrls?.length ? product.imageUrls : product.imageUrl ? [product.imageUrl] : [];
+
   return {
     id: product.id,
     name: product.name,
@@ -42,7 +48,8 @@ function productToRow(product: Product) {
     base_price: product.basePrice,
     colors: product.colors,
     sizes: product.sizes,
-    image_url: product.imageUrl ?? "",
+    image_url: imageUrls[0] ?? "",
+    image_urls: imageUrls,
     is_hidden: Boolean(product.isHidden),
     is_sold_out: Boolean(product.isSoldOut)
   };
@@ -58,6 +65,10 @@ function updatesToRow(updates: Partial<Product>) {
   if (updates.basePrice !== undefined) row.base_price = updates.basePrice;
   if (updates.colors !== undefined) row.colors = updates.colors;
   if (updates.sizes !== undefined) row.sizes = updates.sizes;
+  if (updates.imageUrls !== undefined) {
+    row.image_urls = updates.imageUrls;
+    row.image_url = updates.imageUrls[0] ?? "";
+  }
   if (updates.imageUrl !== undefined) row.image_url = updates.imageUrl;
   if (updates.isHidden !== undefined) row.is_hidden = updates.isHidden;
   if (updates.isSoldOut !== undefined) row.is_sold_out = updates.isSoldOut;
