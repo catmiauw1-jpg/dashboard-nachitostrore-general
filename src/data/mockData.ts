@@ -253,7 +253,13 @@ export const orders: Order[] = [
     status: "En preparación",
     total: 160,
     channel: "WhatsApp",
-    prendas: 1
+    prendas: 1,
+    source: "Web personaliza",
+    botStatus: "Bot registrado",
+    color: "Blanco arena",
+    size: "M",
+    designDetails: "Diseño frontal pequeño, frase corta y estilo minimal.",
+    referenceImages: ["Logo NS", "Boceto enviado"]
   },
   {
     id: "#1027",
@@ -264,7 +270,11 @@ export const orders: Order[] = [
     status: "Lista para enviar",
     total: 130,
     channel: "Instagram",
-    prendas: 1
+    prendas: 1,
+    source: "Web catálogo",
+    botStatus: "Bot registrado",
+    color: "Negro",
+    size: "L"
   },
   {
     id: "#1026",
@@ -275,7 +285,13 @@ export const orders: Order[] = [
     status: "Esperando pago",
     total: 170,
     channel: "Web",
-    prendas: 1
+    prendas: 1,
+    source: "Web personaliza",
+    botStatus: "Esperando comprobante",
+    color: "Negro",
+    size: "XL",
+    designDetails: "Imagen grande en espalda con texto blanco. Cliente pidió revisar tamaño antes de imprimir.",
+    referenceImages: ["Referencia 1", "Referencia 2", "Detalle texto"]
   }
 ];
 

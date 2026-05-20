@@ -19,6 +19,32 @@ const orderStatuses: OrderStatus[] = [
   "Entregado",
   "Cancelado"
 ];
+const orderFlow = [
+  {
+    step: "01",
+    title: "Catálogo web",
+    description: "El cliente elige una prenda publicada, talla y color. Al comprar pasa a WhatsApp.",
+    status: "Web -> WhatsApp"
+  },
+  {
+    step: "02",
+    title: "Personaliza web",
+    description: "El cliente sube referencias, elige color, talla y deja instrucciones del diseño.",
+    status: "Referencias"
+  },
+  {
+    step: "03",
+    title: "Bot WhatsApp",
+    description: "El bot confirma datos, pide comprobante y registra el pedido para producción.",
+    status: "n8n"
+  },
+  {
+    step: "04",
+    title: "Dashboard",
+    description: "Aquí revisas pago, estado, detalles, referencias y avance de cada prenda.",
+    status: "Control"
+  }
+];
 
 export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: OrdersSectionProps) {
   const [activeFilter, setActiveFilter] = useState<"Todos" | OrderType>("Todos");
@@ -42,6 +68,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
   const catalogCount = orders.filter((order) => order.type === "Catálogo").length;
   const customCount = orders.filter((order) => order.type === "Personalizada").length;
   const pendingPayments = orders.filter((order) => order.payment !== "Pago completo").length;
+  const botRegisteredCount = orders.filter((order) => order.botStatus === "Bot registrado").length;
   const totalIncome = orders.reduce((sum, order) => sum + order.total, 0);
 
   return (
@@ -50,7 +77,10 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
         <div>
           <span className="section-kicker">Ventas</span>
           <h2>Pedidos</h2>
-          <p>Administra en un solo lugar las compras del catálogo y las prendas personalizadas.</p>
+          <p>
+            Controla lo que llega desde la web: compras del catálogo, pedidos personalizados,
+            WhatsApp, comprobantes y referencias para producción.
+          </p>
         </div>
         <button className="btn primary" onClick={onRegisterOrder} type="button">
           Registrar pedido
@@ -59,9 +89,9 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
       <div className="section-summary-grid">
         <article className="section-summary-card">
-          <span>Pedidos</span>
+          <span>Desde la web</span>
           <strong>{orders.length}</strong>
-          <small>{filteredOrders.length} visibles ahora</small>
+          <small>Catálogo y personaliza</small>
         </article>
         <article className="section-summary-card">
           <span>Catálogo</span>
@@ -74,10 +104,23 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           <small>Diseños pedidos por clientes</small>
         </article>
         <article className="section-summary-card">
-          <span>Pagos pendientes</span>
-          <strong>{pendingPayments}</strong>
-          <small>{formatCurrency(totalIncome)} registrados</small>
+          <span>Bot registrados</span>
+          <strong>{botRegisteredCount}</strong>
+          <small>{pendingPayments} pagos pendientes · {formatCurrency(totalIncome)}</small>
         </article>
+      </div>
+
+      <div className="order-flow-grid">
+        {orderFlow.map((item) => (
+          <article className="order-flow-card" key={item.step}>
+            <div>
+              <span>{item.step}</span>
+              <strong>{item.title}</strong>
+            </div>
+            <p>{item.description}</p>
+            <small>{item.status}</small>
+          </article>
+        ))}
       </div>
 
       <article className="panel">
@@ -85,7 +128,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           <div className="panel-header compact-panel-header">
             <div>
               <h3>Centro de pedidos</h3>
-              <p>Cambia pago y estado sin separar catálogo de pedidos personalizados.</p>
+              <p>Revisa qué llegó de la web y qué dejó el cliente antes de producir.</p>
             </div>
           </div>
           <input
@@ -117,9 +160,11 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                 <th>Pedido</th>
                 <th>Cliente</th>
                 <th>Prenda</th>
-                <th>Tipo</th>
+                <th>Origen</th>
                 <th>Pago</th>
                 <th>Estado</th>
+                <th>Bot</th>
+                <th>Detalles web</th>
                 <th>Total</th>
               </tr>
             </thead>
@@ -144,6 +189,7 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                   </td>
                   <td>
                     <span className={`badge ${order.type === "Personalizada" ? "accent" : "info"}`}>{order.type}</span>
+                    <small>{order.source ?? "Web"}</small>
                   </td>
                   <td>
                     <select
@@ -174,6 +220,34 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td>
+                    <span className={`badge ${badgeClass(order.botStatus ?? "Atención manual")}`}>
+                      {order.botStatus ?? "Atención manual"}
+                    </span>
+                    <small>{order.channel}</small>
+                  </td>
+                  <td>
+                    {order.type === "Personalizada" ? (
+                      <div className="order-reference-cell">
+                        <strong>{order.referenceImages?.length ?? 0} referencias</strong>
+                        <small>{order.designDetails ?? "Sin detalles del diseño"}</small>
+                        {Boolean(order.referenceImages?.length) && (
+                          <div className="reference-chip-list">
+                            {order.referenceImages?.slice(0, 3).map((reference) => (
+                              <span className="reference-chip" key={reference}>
+                                {reference}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="order-reference-cell">
+                        <strong>Producto del catálogo</strong>
+                        <small>Prenda elegida en la web y continuada por WhatsApp.</small>
+                      </div>
+                    )}
                   </td>
                   <td>
                     <strong>{formatCurrency(order.total)}</strong>

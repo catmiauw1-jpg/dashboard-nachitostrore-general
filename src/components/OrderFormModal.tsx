@@ -105,7 +105,11 @@ export function OrderFormModal({
       channel,
       prendas: safeQuantity,
       delivery,
-      notes: notes.trim() || undefined
+      notes: notes.trim() || undefined,
+      source: channel === "Web" ? (orderType === "Catálogo" ? "Web catálogo" : "Web personaliza") : "Manual",
+      botStatus: channel === "WhatsApp" || channel === "Web" ? "Bot registrado" : "Atención manual",
+      designDetails: orderType === "Personalizada" ? notes.trim() || "Pendiente de revisar referencias." : undefined,
+      referenceImages: orderType === "Personalizada" ? ["Referencia pendiente"] : undefined
     });
 
     onClose();

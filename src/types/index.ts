@@ -39,6 +39,10 @@ export type SalesChannel = "WhatsApp" | "Instagram" | "Web" | "Manual";
 
 export type DeliveryMethod = "Recoger" | "Yango";
 
+export type OrderSource = "Web catálogo" | "Web personaliza" | "WhatsApp bot" | "Manual";
+
+export type BotOrderStatus = "Bot registrado" | "Esperando comprobante" | "Atención manual";
+
 export interface ChartPoint {
   label: string;
   ventas: number;
@@ -108,6 +112,10 @@ export interface Order {
   prendas: number;
   delivery?: DeliveryMethod;
   notes?: string;
+  source?: OrderSource;
+  botStatus?: BotOrderStatus;
+  designDetails?: string;
+  referenceImages?: string[];
 }
 
 export interface Conversation {

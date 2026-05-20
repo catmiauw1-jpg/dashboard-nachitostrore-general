@@ -15,7 +15,8 @@ export function badgeClass(value: string) {
     text.includes("completo") ||
     text.includes("lista") ||
     text.includes("ok") ||
-    text.includes("activo")
+    text.includes("activo") ||
+    text.includes("registrado")
   ) {
     return "success";
   }

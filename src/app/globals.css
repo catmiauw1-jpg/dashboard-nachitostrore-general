@@ -360,7 +360,7 @@ body.dark .btn.primary {
 
 .section-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 14px;
 }
 
@@ -427,6 +427,64 @@ body.dark .btn.primary {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.order-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.order-flow-card {
+  min-height: 150px;
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.1), transparent),
+    var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.order-flow-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.order-flow-card span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.order-flow-card strong {
+  flex: 1;
+  font-size: 14px;
+}
+
+.order-flow-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.order-flow-card small {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .ready-box {
@@ -1274,7 +1332,7 @@ body.dark .bar {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
+  min-width: 1120px;
 }
 
 thead {
@@ -1332,6 +1390,39 @@ td small {
 .inline-select option {
   color: #111827;
   background: #ffffff;
+}
+
+.order-reference-cell {
+  display: grid;
+  gap: 7px;
+  max-width: 270px;
+}
+
+.order-reference-cell strong {
+  margin: 0;
+}
+
+.order-reference-cell small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.reference-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.reference-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
 }
 
 .bot-toggle {
@@ -1767,6 +1858,10 @@ body.dark .field select option {
     grid-template-columns: 1fr;
   }
 
+  .order-flow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1829,6 +1924,10 @@ body.dark .field select option {
   .module-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .order-flow-grid {
+    grid-template-columns: 1fr;
   }
 
   .product-grid {
