@@ -42,7 +42,11 @@ export function Dashboard() {
   useEffect(() => {
     async function loadProducts() {
       try {
-        const [productsResponse, stockResponse] = await Promise.all([fetch("/api/products"), fetch("/api/stock")]);
+        const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
+          fetch("/api/products"),
+          fetch("/api/stock"),
+          fetch("/api/orders")
+        ]);
 
         if (productsResponse.ok) {
           const nextProducts = (await productsResponse.json()) as Product[];
@@ -53,6 +57,11 @@ export function Dashboard() {
           const data = (await stockResponse.json()) as { stock: StockItem[]; products: Product[] };
           setStockList(data.stock);
           if (data.products.length) setProductList(data.products);
+        }
+
+        if (ordersResponse.ok) {
+          const nextOrders = (await ordersResponse.json()) as Order[];
+          if (nextOrders.length) setOrderList(nextOrders);
         }
       } catch {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -106,6 +115,13 @@ export function Dashboard() {
     setOrderList((currentOrders) =>
       currentOrders.map((order) => (order.id === orderId ? { ...order, ...updates } : order))
     );
+
+    void fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: orderId, updates })
+    });
+
     showToast(`Pedido ${orderId} actualizado.`);
   };
 
