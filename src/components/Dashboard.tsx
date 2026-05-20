@@ -309,7 +309,6 @@ export function Dashboard() {
         <StockSection
           products={productList}
           stock={stockList}
-          onAdjustStock={handleAdjustStock}
           onUpdateStock={handleUpdateStock}
         />
       );

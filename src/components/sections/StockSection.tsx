@@ -1,13 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Product, StockItem } from "@/types";
 
 interface StockSectionProps {
   products: Product[];
   stock: StockItem[];
   onUpdateStock: (item: StockItem) => void | Promise<void>;
-  onAdjustStock: (item: StockItem, delta: number) => void | Promise<void>;
 }
 
 const defaultColors = ["Blanco arena", "Negro"];
@@ -34,8 +33,11 @@ function resolveColorName(value: string, colors: string[]) {
   return colors.find((option) => normalizeColor(option) === normalizeColor(cleanColor)) ?? cleanColor;
 }
 
-export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSectionProps) {
+export function StockSection({ stock, onUpdateStock }: StockSectionProps) {
   const [visibleStock, setVisibleStock] = useState(stock);
+  const visibleStockRef = useRef(stock);
+  const pendingStockRef = useRef<Record<string, StockItem>>({});
+  const syncTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const colors = useMemo(
     () => [...new Set([...defaultColors, ...visibleStock.map((item) => item.color)].filter(Boolean))],
     [visibleStock]
@@ -46,8 +48,19 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
   const [min, setMin] = useState(1);
 
   useEffect(() => {
-    setVisibleStock(stock);
+    if (Object.keys(pendingStockRef.current).length === 0) {
+      visibleStockRef.current = stock;
+      setVisibleStock(stock);
+    }
   }, [stock]);
+
+  useEffect(() => {
+    const timers = syncTimersRef.current;
+
+    return () => {
+      Object.values(timers).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   const stockByColor = useMemo(
     () =>
@@ -87,22 +100,25 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
       min: Math.max(0, min)
     });
 
+    const nextItem = {
+      id: selectedVariant?.id ?? stockId(cleanColor, size),
+      productId: baseProductId,
+      productName: baseProductName,
+      size,
+      color: cleanColor,
+      item: `${baseProductName} ${cleanColor} ${size}`,
+      available: nextAvailable,
+      min: Math.max(0, min)
+    };
+
     setVisibleStock((currentStock) => {
-      const nextItem = {
-        id: selectedVariant?.id ?? stockId(cleanColor, size),
-        productId: baseProductId,
-        productName: baseProductName,
-        size,
-        color: cleanColor,
-        item: `${baseProductName} ${cleanColor} ${size}`,
-        available: nextAvailable,
-        min: Math.max(0, min)
-      };
       const exists = currentStock.some((stockItem) => stockItem.id === nextItem.id);
+      const nextStock = exists
+        ? currentStock.map((stockItem) => (stockItem.id === nextItem.id ? nextItem : stockItem))
+        : [nextItem, ...currentStock];
 
-      if (!exists) return [nextItem, ...currentStock];
-
-      return currentStock.map((stockItem) => (stockItem.id === nextItem.id ? nextItem : stockItem));
+      visibleStockRef.current = nextStock;
+      return nextStock;
     });
     setColor("");
     setSize(baseSizes[0]);
@@ -110,18 +126,33 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
     setMin(1);
   };
 
+  const scheduleStockSync = (item: StockItem) => {
+    pendingStockRef.current[item.id] = item;
+    clearTimeout(syncTimersRef.current[item.id]);
+
+    syncTimersRef.current[item.id] = setTimeout(() => {
+      const latestItem = pendingStockRef.current[item.id];
+      delete pendingStockRef.current[item.id];
+      delete syncTimersRef.current[item.id];
+
+      if (latestItem) {
+        void onUpdateStock(latestItem);
+      }
+    }, 260);
+  };
+
   const handleQuickAdjust = (item: StockItem, delta: number) => {
-    const nextItem = { ...item, available: Math.max(0, item.available + delta) };
+    const currentStock = visibleStockRef.current;
+    const currentItem = currentStock.find((stockItem) => stockItem.id === item.id) ?? item;
+    const nextItem = { ...currentItem, available: Math.max(0, currentItem.available + delta) };
+    const exists = currentStock.some((stockItem) => stockItem.id === item.id);
+    const nextStock = exists
+      ? currentStock.map((stockItem) => (stockItem.id === item.id ? nextItem : stockItem))
+      : [nextItem, ...currentStock];
 
-    setVisibleStock((currentStock) => {
-      const exists = currentStock.some((stockItem) => stockItem.id === item.id);
-
-      if (!exists) return [nextItem, ...currentStock];
-
-      return currentStock.map((stockItem) => (stockItem.id === item.id ? nextItem : stockItem));
-    });
-
-    void onAdjustStock(item, delta);
+    visibleStockRef.current = nextStock;
+    setVisibleStock(nextStock);
+    scheduleStockSync(nextItem);
   };
 
   return (
@@ -181,6 +212,19 @@ export function StockSection({ stock, onUpdateStock, onAdjustStock }: StockSecti
                   <option key={option} value={option} />
                 ))}
               </datalist>
+              <div className="color-choice-list" aria-label="Colores registrados">
+                {colors.map((option) => (
+                  <button
+                    className={normalizeColor(option) === normalizeColor(selectedColor) ? "color-choice active" : "color-choice"}
+                    key={option}
+                    onClick={() => setColor(option)}
+                    type="button"
+                  >
+                    <span className={`base-color-swatch tiny ${option === "Negro" ? "black" : "sand"}`} />
+                    {option}
+                  </button>
+                ))}
+              </div>
             </label>
 
             <div className="form-grid two-columns">
