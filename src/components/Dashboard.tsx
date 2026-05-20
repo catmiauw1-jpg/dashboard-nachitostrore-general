@@ -314,11 +314,14 @@ export function Dashboard() {
       currentOrders.map((order) => (order.id === orderId ? { ...order, ...updates } : order))
     );
 
-    void fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: orderId, updates })
-    });
+    void (async () => {
+      await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, updates })
+      });
+      await refreshBusinessData({ notifyNewOrders: false });
+    })();
 
     showToast(`Pedido ${orderId} actualizado.`);
   };

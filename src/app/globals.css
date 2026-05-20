@@ -487,6 +487,37 @@ body.dark .btn.primary {
   text-transform: uppercase;
 }
 
+.orders-filter-stack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.stage-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stage-filter button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  transition: 0.2s ease;
+}
+
+.stage-filter button:hover,
+.stage-filter button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .orders-layout {
   display: grid;
   grid-template-columns: minmax(420px, 0.95fr) minmax(440px, 1.05fr);
@@ -645,6 +676,27 @@ body.dark .btn.primary {
 .order-detail-total small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.order-detail-total .stock-deducted,
+.order-detail-total .stock-pending {
+  width: max-content;
+  margin-top: 4px;
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.order-detail-total .stock-deducted {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.order-detail-total .stock-pending {
+  background: var(--amber-soft);
+  color: var(--amber);
 }
 
 .detail-controls {

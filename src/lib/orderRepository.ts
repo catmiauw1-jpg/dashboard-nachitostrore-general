@@ -1,4 +1,5 @@
 import { orders as fallbackOrders } from "@/data/mockData";
+import { adjustStockByColorSize } from "@/lib/stockRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import type {
   BotOrderStatus,
@@ -18,6 +19,8 @@ interface OrderNotesPayload {
   designDetails?: string;
   quoteOption?: string;
   referenceImages?: string[];
+  stockDeducted?: boolean;
+  stockDeductedAt?: string;
 }
 
 interface OrderRow {
@@ -63,7 +66,22 @@ function serializeNotes(order: Order) {
     botStatus: order.botStatus,
     designDetails: order.designDetails,
     quoteOption: order.quoteOption,
-    referenceImages: order.referenceImages ?? []
+    referenceImages: order.referenceImages ?? [],
+    stockDeducted: order.stockDeducted,
+    stockDeductedAt: order.stockDeductedAt
+  });
+}
+
+function serializeNotesPayload(notes: OrderNotesPayload) {
+  return JSON.stringify({
+    notes: notes.notes,
+    source: notes.source,
+    botStatus: notes.botStatus,
+    designDetails: notes.designDetails,
+    quoteOption: notes.quoteOption,
+    referenceImages: notes.referenceImages ?? [],
+    stockDeducted: notes.stockDeducted,
+    stockDeductedAt: notes.stockDeductedAt
   });
 }
 
@@ -194,12 +212,38 @@ function rowToOrder(row: OrderRow): Order {
     designDetails: notes.designDetails ?? firstItem?.custom_description ?? undefined,
     quoteOption: notes.quoteOption,
     referenceImages: notes.referenceImages ?? [],
+    stockDeducted: notes.stockDeducted,
+    stockDeductedAt: notes.stockDeductedAt,
     items
   };
 }
 
 function cleanOrderNumber(id: string) {
   return id.replace(/^#/, "");
+}
+
+function shouldDeductStock(status?: OrderStatus) {
+  return status === "En preparación" || status === "Lista para enviar" || status === "Entregado";
+}
+
+async function deductOrderStock(order: Order) {
+  const items = order.items?.length
+    ? order.items
+    : [
+        {
+          productName: order.product,
+          size: order.size,
+          color: order.color,
+          quantity: order.prendas,
+          unitPrice: 0,
+          lineTotal: 0
+        }
+      ];
+
+  for (const item of items) {
+    if (!item.color || !item.size) continue;
+    await adjustStockByColorSize(item.color, item.size, -Math.max(1, item.quantity || 1));
+  }
 }
 
 export async function readOrders(): Promise<Order[]> {
@@ -262,11 +306,39 @@ export async function updateOrder(orderId: string, updates: Partial<Order>): Pro
   const supabase = createSupabaseAdminClient();
   if (!supabase) return fallbackOrders;
 
+  const { data: currentRow, error: currentError } = await supabase
+    .from("orders")
+    .select("*, order_items(product_name, size, color, quantity, unit_price, is_custom, custom_description)")
+    .eq("order_number", cleanOrderNumber(orderId))
+    .single();
+
+  if (currentError) throw new Error(currentError.message);
+
+  const currentOrder = rowToOrder(currentRow as OrderRow);
+  const currentNotes = parseNotes((currentRow as OrderRow).notes);
   const updatePayload: Record<string, unknown> = {};
   if (updates.payment) updatePayload.payment_status = updates.payment;
   if (updates.status) updatePayload.order_status = updates.status;
   if (updates.delivery) updatePayload.delivery_method = updates.delivery;
-  if (updates.notes !== undefined) updatePayload.notes = serializeNotes({ ...updates, id: orderId } as Order);
+
+  const nextNotes: OrderNotesPayload = {
+    ...currentNotes,
+    notes: updates.notes ?? currentNotes.notes,
+    source: updates.source ?? currentNotes.source,
+    botStatus: updates.botStatus ?? currentNotes.botStatus,
+    designDetails: updates.designDetails ?? currentNotes.designDetails,
+    quoteOption: updates.quoteOption ?? currentNotes.quoteOption,
+    referenceImages: updates.referenceImages ?? currentNotes.referenceImages ?? []
+  };
+
+  if (updates.notes !== undefined) updatePayload.notes = serializeNotesPayload(nextNotes);
+
+  if (shouldDeductStock(updates.status) && !currentNotes.stockDeducted) {
+    await deductOrderStock(currentOrder);
+    nextNotes.stockDeducted = true;
+    nextNotes.stockDeductedAt = new Date().toISOString();
+    updatePayload.notes = serializeNotesPayload(nextNotes);
+  }
 
   if (Object.keys(updatePayload).length) {
     const { error } = await supabase.from("orders").update(updatePayload).eq("order_number", cleanOrderNumber(orderId));

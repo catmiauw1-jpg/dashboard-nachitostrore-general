@@ -129,6 +129,8 @@ export interface Order {
   designDetails?: string;
   quoteOption?: string;
   referenceImages?: string[];
+  stockDeducted?: boolean;
+  stockDeductedAt?: string;
   items?: OrderLineItem[];
 }
 

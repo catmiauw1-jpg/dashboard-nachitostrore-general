@@ -161,3 +161,15 @@ export async function adjustStockItem(itemId: string, delta: number): Promise<St
   await syncDesignedProductsSoldOut(nextStock);
   return nextStock;
 }
+
+export async function adjustStockByColorSize(color: string, size: string, delta: number): Promise<boolean> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return false;
+
+  const stock = await readStockItems();
+  const matchingItem = stock.find((item) => normalize(item.color) === normalize(color) && normalize(item.size) === normalize(size));
+  if (!matchingItem) return false;
+
+  await adjustStockItem(matchingItem.id, delta);
+  return true;
+}

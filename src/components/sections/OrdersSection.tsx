@@ -11,6 +11,13 @@ interface OrdersSectionProps {
 }
 
 const orderFilters: Array<"Todos" | OrderType> = ["Todos", "Catálogo", "Personalizada"];
+const stageFilters: Array<"Activos" | "Esperando pago" | "En preparación" | "Listos" | "Entregados"> = [
+  "Activos",
+  "Esperando pago",
+  "En preparación",
+  "Listos",
+  "Entregados"
+];
 const paymentStatuses: PaymentStatus[] = ["Pendiente", "50% pagado", "Pago completo"];
 const orderStatuses: OrderStatus[] = [
   "Esperando pago",
@@ -81,6 +88,7 @@ function orderSearchText(order: Order) {
 
 export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: OrdersSectionProps) {
   const [activeFilter, setActiveFilter] = useState<"Todos" | OrderType>("Todos");
+  const [activeStage, setActiveStage] = useState<(typeof stageFilters)[number]>("Activos");
   const [query, setQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -96,6 +104,12 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
   }, [activeFilter, orders, query]);
 
   const preparationOrders = visibleOrders.filter((order) => order.status !== "Entregado" && order.status !== "Cancelado");
+  const displayedOrders = visibleOrders.filter((order) => {
+    if (activeStage === "Activos") return order.status !== "Entregado" && order.status !== "Cancelado";
+    if (activeStage === "Listos") return order.status === "Lista para enviar";
+    if (activeStage === "Entregados") return order.status === "Entregado";
+    return order.status === activeStage;
+  });
   const customWebOrders = orders.filter((order) => order.type === "Personalizada" && order.source === "Web personaliza");
   const readyOrders = orders.filter((order) => order.status === "Lista para enviar").length;
   const pendingPayments = orders.filter((order) => order.payment !== "Pago completo").length;
@@ -160,21 +174,36 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
             />
           </div>
 
-          <div className="segmented-control orders-filter" aria-label="Filtrar pedidos">
-            {orderFilters.map((filter) => (
-              <button
-                className={activeFilter === filter ? "active" : undefined}
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                type="button"
-              >
-                {filter}
-              </button>
-            ))}
+          <div className="orders-filter-stack">
+            <div className="segmented-control orders-filter" aria-label="Filtrar por tipo de pedido">
+              {orderFilters.map((filter) => (
+                <button
+                  className={activeFilter === filter ? "active" : undefined}
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  type="button"
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+
+            <div className="stage-filter" aria-label="Filtrar por estado">
+              {stageFilters.map((filter) => (
+                <button
+                  className={activeStage === filter ? "active" : undefined}
+                  key={filter}
+                  onClick={() => setActiveStage(filter)}
+                  type="button"
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="production-list">
-            {preparationOrders.map((order) => {
+            {displayedOrders.map((order) => {
               const items = orderItems(order);
               const itemSummary = items.slice(0, 2).map((item) => item.productName).join(", ");
               const isSelected = selectedOrder?.id === order.id;
@@ -209,10 +238,10 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
               );
             })}
 
-            {!preparationOrders.length ? (
+            {!displayedOrders.length ? (
               <div className="empty-state">
-                <strong>No hay pedidos activos</strong>
-                <p>Cuando entre un pedido desde la web, aparecerá aquí para revisarlo.</p>
+                <strong>No hay pedidos en este filtro</strong>
+                <p>Cambia el tipo o estado para revisar otros pedidos.</p>
               </div>
             ) : null}
           </div>
@@ -241,6 +270,9 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                 <span>Total del pedido</span>
                 <strong>{formatCurrency(selectedTotal)}</strong>
                 <small>{selectedOrder.prendas} {selectedOrder.prendas === 1 ? "prenda" : "prendas"}</small>
+                <small className={selectedOrder.stockDeducted ? "stock-deducted" : "stock-pending"}>
+                  {selectedOrder.stockDeducted ? "Stock descontado" : "Stock pendiente"}
+                </small>
               </div>
 
               <div className="order-control-grid detail-controls">
