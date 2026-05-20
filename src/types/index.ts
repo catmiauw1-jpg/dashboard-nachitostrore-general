@@ -61,6 +61,11 @@ export interface Metric {
 }
 
 export interface StockItem {
+  id: string;
+  productId: string;
+  productName: string;
+  size: string;
+  color: string;
   item: string;
   available: number;
   min: number;
@@ -84,6 +89,7 @@ export interface Product {
   sizes: string[];
   imageUrl?: string;
   imageUrls?: string[];
+  stock?: StockItem[];
   isHidden?: boolean;
   isSoldOut?: boolean;
 }

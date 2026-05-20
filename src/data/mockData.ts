@@ -149,10 +149,46 @@ export const chartData: ChartData = {
 };
 
 export const stockData: StockItem[] = [
-  { item: "Oversize blanco hueso M", available: 2, min: 3 },
-  { item: "Oversize negro L", available: 8, min: 3 },
-  { item: "Regular blanco S", available: 1, min: 4 },
-  { item: "Regular negro M", available: 6, min: 4 }
+  {
+    id: "prod-oversize-hueso::Blanco hueso::M",
+    productId: "prod-oversize-hueso",
+    productName: "Oversize blanco hueso",
+    size: "M",
+    color: "Blanco hueso",
+    item: "Oversize blanco hueso Blanco hueso M",
+    available: 2,
+    min: 3
+  },
+  {
+    id: "prod-oversize-hueso::Negro::L",
+    productId: "prod-oversize-hueso",
+    productName: "Oversize blanco hueso",
+    size: "L",
+    color: "Negro",
+    item: "Oversize blanco hueso Negro L",
+    available: 8,
+    min: 3
+  },
+  {
+    id: "prod-regular-blanca::Blanco::S",
+    productId: "prod-regular-blanca",
+    productName: "Regular blanco básico",
+    size: "S",
+    color: "Blanco",
+    item: "Regular blanco básico Blanco S",
+    available: 1,
+    min: 4
+  },
+  {
+    id: "prod-negra-minimal::Negro::M",
+    productId: "prod-negra-minimal",
+    productName: "Polera negra minimal",
+    size: "M",
+    color: "Negro",
+    item: "Polera negra minimal Negro M",
+    available: 6,
+    min: 4
+  }
 ];
 
 export const customers: Customer[] = [

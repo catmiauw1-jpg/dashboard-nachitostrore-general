@@ -1,5 +1,6 @@
 import { readFileCatalogProducts, writeFileCatalogProducts } from "@/lib/catalogStore";
 import { createSupabaseAdminClient, createSupabasePublicClient } from "@/lib/supabase";
+import { readStockByProductIds } from "@/lib/stockRepository";
 import type { Product } from "@/types";
 
 interface ProductRow {
@@ -76,6 +77,15 @@ function updatesToRow(updates: Partial<Product>) {
   return row;
 }
 
+async function attachStock(products: Product[]) {
+  const stockByProductId = await readStockByProductIds(products.map((product) => product.id));
+
+  return products.map((product) => ({
+    ...product,
+    stock: stockByProductId[product.id] ?? []
+  }));
+}
+
 export async function readCatalogProducts(): Promise<Product[]> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return readFileCatalogProducts();
@@ -90,7 +100,7 @@ export async function readCatalogProducts(): Promise<Product[]> {
     return readFileCatalogProducts();
   }
 
-  return (data as ProductRow[]).map(rowToProduct);
+  return attachStock((data as ProductRow[]).map(rowToProduct));
 }
 
 export async function readPublicCatalogProducts(options: { includeHidden?: boolean } = {}): Promise<Product[]> {
@@ -117,7 +127,7 @@ export async function readPublicCatalogProducts(options: { includeHidden?: boole
     return options.includeHidden ? products : products.filter((product) => !product.isHidden);
   }
 
-  return (data as ProductRow[]).map(rowToProduct);
+  return attachStock((data as ProductRow[]).map(rowToProduct));
 }
 
 export async function createCatalogProduct(product: Product) {

@@ -1035,6 +1035,75 @@ body.dark .bar {
   font-weight: 900;
 }
 
+.stock-product-list {
+  display: grid;
+  gap: 12px;
+  max-height: 650px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.stock-product-block {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 14px;
+  background: var(--surface-soft);
+}
+
+.stock-product-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.stock-product-head h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.stock-product-head p,
+.empty-stock-note {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.variant-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.variant-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+}
+
+.variant-row strong,
+.variant-row span,
+.variant-stock-meta span {
+  display: block;
+  font-size: 12px;
+}
+
+.variant-row > div:first-child span,
+.variant-stock-meta small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.variant-stock-meta {
+  text-align: right;
+}
+
 .orders-toolbar {
   display: flex;
   justify-content: space-between;

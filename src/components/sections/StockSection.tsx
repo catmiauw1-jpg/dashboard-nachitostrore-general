@@ -1,13 +1,17 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Product, StockItem } from "@/types";
 
 interface StockSectionProps {
   products: Product[];
   stock: StockItem[];
-  onUpdateStock: (item: StockItem) => void;
-  onAdjustStock: (itemName: string, delta: number) => void;
+  onUpdateStock: (item: StockItem) => void | Promise<void>;
+  onAdjustStock: (itemId: string, delta: number) => void | Promise<void>;
+}
+
+function stockId(productId: string, color: string, size: string) {
+  return `${productId}::${color}::${size}`;
 }
 
 export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: StockSectionProps) {
@@ -20,6 +24,35 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
   const [color, setColor] = useState(selectedProduct?.colors[0] ?? "Negro");
   const [available, setAvailable] = useState(5);
   const [min, setMin] = useState(3);
+
+  const stockByProduct = useMemo(
+    () =>
+      stock.reduce<Record<string, StockItem[]>>((items, item) => {
+        items[item.productId] = [...(items[item.productId] ?? []), item];
+        return items;
+      }, {}),
+    [stock]
+  );
+  const selectedVariant = useMemo(
+    () => stock.find((item) => item.productId === productId && item.size === size && item.color === color),
+    [color, productId, size, stock]
+  );
+
+  useEffect(() => {
+    if (!products.length) return;
+    if (products.some((product) => product.id === productId)) return;
+
+    const nextProduct = products[0];
+    setProductId(nextProduct.id);
+    setSize(nextProduct.sizes[0] ?? "M");
+    setColor(nextProduct.colors[0] ?? "Negro");
+  }, [productId, products]);
+
+  useEffect(() => {
+    if (!selectedVariant) return;
+    setAvailable(selectedVariant.available);
+    setMin(selectedVariant.min);
+  }, [selectedVariant]);
 
   const handleProductChange = (nextProductId: string) => {
     const nextProduct = products.find((product) => product.id === nextProductId);
@@ -34,7 +67,12 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
 
     if (!selectedProduct) return;
 
-    onUpdateStock({
+    void onUpdateStock({
+      id: selectedVariant?.id ?? stockId(selectedProduct.id, color, size),
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
+      size,
+      color,
       item: `${selectedProduct.name} ${color} ${size}`,
       available: Math.max(0, available),
       min: Math.max(0, min)
@@ -42,6 +80,7 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
   };
 
   const lowStockCount = stock.filter((item) => item.available <= item.min).length;
+  const emptyStockCount = stock.filter((item) => item.available === 0).length;
 
   return (
     <section className="section-workspace">
@@ -49,20 +88,25 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
         <div>
           <span className="section-kicker">Inventario</span>
           <h2>Stock</h2>
-          <p>Actualiza unidades disponibles por producto, talla y color.</p>
+          <p>Controla unidades disponibles por producto, talla y color.</p>
         </div>
       </header>
 
       <div className="section-summary-grid">
         <article className="section-summary-card">
-          <span>Items</span>
+          <span>Variantes</span>
           <strong>{stock.length}</strong>
-          <small>Variantes controladas</small>
+          <small>Tallas y colores</small>
         </article>
         <article className="section-summary-card">
           <span>Stock bajo</span>
           <strong>{lowStockCount}</strong>
           <small>Reponer pronto</small>
+        </article>
+        <article className="section-summary-card">
+          <span>Sin unidades</span>
+          <strong>{emptyStockCount}</strong>
+          <small>En cero</small>
         </article>
         <article className="section-summary-card">
           <span>Unidades</span>
@@ -75,8 +119,8 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h3>Actualizar stock</h3>
-              <p>Si la variante ya existe, se actualiza. Si no existe, se crea.</p>
+              <h3>Actualizar variante</h3>
+              <p>Elige una prenda, talla y color para definir su stock real.</p>
             </div>
             <span className="badge accent">Inventario</span>
           </div>
@@ -133,7 +177,7 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
             </div>
 
             <button className="btn primary" type="submit">
-              Guardar stock
+              Guardar variante
             </button>
           </form>
         </article>
@@ -142,31 +186,65 @@ export function StockSection({ products, stock, onUpdateStock, onAdjustStock }: 
           <div className="panel-header">
             <div>
               <h3>Stock actual</h3>
-              <p>Ajustes rápidos para sumar o restar unidades.</p>
+              <p>Ajustes rápidos por prenda, talla y color.</p>
             </div>
           </div>
 
-          <div className="stock-list">
-            {stock.map((item) => {
-              const low = item.available <= item.min;
+          <div className="stock-product-list">
+            {products.map((product) => {
+              const variants = stockByProduct[product.id] ?? [];
 
               return (
-                <div className="stock-item" key={item.item}>
-                  <div>
-                    <h4>{item.item}</h4>
-                    <p>
-                      Mínimo: {item.min} · Disponible: {item.available}
-                    </p>
+                <div className="stock-product-block" key={product.id}>
+                  <div className="stock-product-head">
+                    <div>
+                      <h4>{product.name}</h4>
+                      <p>{variants.length ? `${variants.length} variantes controladas` : "Sin variantes de stock"}</p>
+                    </div>
+                    <span className={`badge ${product.isSoldOut ? "danger" : "success"}`}>
+                      {product.isSoldOut ? "Agotado" : "Disponible"}
+                    </span>
                   </div>
-                  <div className="stock-controls">
-                    <button className="btn icon small-icon-btn" onClick={() => onAdjustStock(item.item, -1)} type="button">
-                      -
-                    </button>
-                    <span className={`badge ${low ? "danger" : "success"}`}>{low ? "Bajo" : "OK"}</span>
-                    <button className="btn icon small-icon-btn" onClick={() => onAdjustStock(item.item, 1)} type="button">
-                      +
-                    </button>
-                  </div>
+
+                  {variants.length ? (
+                    <div className="variant-grid">
+                      {variants.map((item) => {
+                        const low = item.available <= item.min;
+
+                        return (
+                          <div className="variant-row" key={item.id}>
+                            <div>
+                              <strong>{item.color}</strong>
+                              <span>{item.size}</span>
+                            </div>
+                            <div className="variant-stock-meta">
+                              <span>{item.available} uds</span>
+                              <small>Min {item.min}</small>
+                            </div>
+                            <div className="stock-controls">
+                              <button
+                                className="btn icon small-icon-btn"
+                                onClick={() => onAdjustStock(item.id, -1)}
+                                type="button"
+                              >
+                                -
+                              </button>
+                              <span className={`badge ${low ? "danger" : "success"}`}>{low ? "Bajo" : "OK"}</span>
+                              <button
+                                className="btn icon small-icon-btn"
+                                onClick={() => onAdjustStock(item.id, 1)}
+                                type="button"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="empty-stock-note">Crea la primera variante usando el formulario.</p>
+                  )}
                 </div>
               );
             })}

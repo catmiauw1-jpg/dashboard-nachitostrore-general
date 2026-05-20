@@ -40,11 +40,18 @@ export function Dashboard() {
   useEffect(() => {
     async function loadProducts() {
       try {
-        const response = await fetch("/api/products");
-        if (!response.ok) return;
+        const [productsResponse, stockResponse] = await Promise.all([fetch("/api/products"), fetch("/api/stock")]);
 
-        const nextProducts = (await response.json()) as Product[];
-        if (nextProducts.length) setProductList(nextProducts);
+        if (productsResponse.ok) {
+          const nextProducts = (await productsResponse.json()) as Product[];
+          if (nextProducts.length) setProductList(nextProducts);
+        }
+
+        if (stockResponse.ok) {
+          const data = (await stockResponse.json()) as { stock: StockItem[]; products: Product[] };
+          setStockList(data.stock);
+          if (data.products.length) setProductList(data.products);
+        }
       } catch {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
       }
@@ -177,24 +184,55 @@ export function Dashboard() {
     }
   };
 
-  const handleUpdateStock = (item: StockItem) => {
+  const applyStockResponse = async (response: Response) => {
+    if (!response.ok) throw new Error("No se pudo guardar el stock");
+
+    const data = (await response.json()) as { stock: StockItem[]; products: Product[] };
+    setStockList(data.stock);
+    if (data.products.length) setProductList(data.products);
+  };
+
+  const handleUpdateStock = async (item: StockItem) => {
     setStockList((currentStock) => {
-      const exists = currentStock.some((stockItem) => stockItem.item === item.item);
+      const exists = currentStock.some((stockItem) => stockItem.id === item.id);
 
       if (!exists) return [item, ...currentStock];
 
-      return currentStock.map((stockItem) => (stockItem.item === item.item ? item : stockItem));
+      return currentStock.map((stockItem) => (stockItem.id === item.id ? item : stockItem));
     });
 
-    showToast(`Stock actualizado: ${item.item}.`);
+    try {
+      await applyStockResponse(
+        await fetch("/api/stock", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(item)
+        })
+      );
+      showToast(`Stock actualizado: ${item.item}.`);
+    } catch {
+      showToast("El stock quedÃ³ local, pero no se pudo guardar en la API.");
+    }
   };
 
-  const handleAdjustStock = (itemName: string, delta: number) => {
+  const handleAdjustStock = async (itemId: string, delta: number) => {
     setStockList((currentStock) =>
       currentStock.map((item) =>
-        item.item === itemName ? { ...item, available: Math.max(0, item.available + delta) } : item
+        item.id === itemId ? { ...item, available: Math.max(0, item.available + delta) } : item
       )
     );
+
+    try {
+      await applyStockResponse(
+        await fetch("/api/stock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: itemId, delta })
+        })
+      );
+    } catch {
+      showToast("El ajuste quedÃ³ local, pero no se pudo guardar en la API.");
+    }
   };
 
   const handleSectionPrimaryAction = () => {
