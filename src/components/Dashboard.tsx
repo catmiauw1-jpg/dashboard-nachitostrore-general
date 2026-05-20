@@ -159,6 +159,24 @@ export function Dashboard() {
     showToast("Producto actualizado.");
   };
 
+  const handleDeleteProduct = async (productId: string) => {
+    const product = productList.find((item) => item.id === productId);
+    setProductList((currentProducts) => currentProducts.filter((item) => item.id !== productId));
+
+    try {
+      const response = await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: productId })
+      });
+
+      if (!response.ok) throw new Error("No se pudo eliminar");
+      showToast(product ? `Producto "${product.name}" eliminado de la web.` : "Producto eliminado de la web.");
+    } catch {
+      showToast("El producto se quitó localmente, pero no se pudo eliminar en la API.");
+    }
+  };
+
   const handleUpdateStock = (item: StockItem) => {
     setStockList((currentStock) => {
       const exists = currentStock.some((stockItem) => stockItem.item === item.item);
@@ -217,6 +235,7 @@ export function Dashboard() {
         <ProductsSection
           products={productList}
           onAddProduct={handleAddProduct}
+          onDeleteProduct={handleDeleteProduct}
           onToggleHidden={handleToggleProductHidden}
           onToggleSoldOut={handleToggleProductSoldOut}
           onUpdateProduct={handleUpdateProduct}

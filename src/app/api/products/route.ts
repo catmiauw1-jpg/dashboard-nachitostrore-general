@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { jsonHeaders, readCatalogProducts, writeCatalogProducts } from "@/lib/catalogStore";
+import { jsonHeaders } from "@/lib/catalogStore";
+import {
+  createCatalogProduct,
+  deleteCatalogProduct,
+  readCatalogProducts,
+  updateCatalogProduct
+} from "@/lib/productRepository";
 import type { Product } from "@/types";
 
 export async function OPTIONS() {
@@ -13,23 +19,21 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const product = (await request.json()) as Product;
-  const products = await readCatalogProducts();
-  const nextProducts = [product, ...products.filter((item) => item.id !== product.id)];
-
-  await writeCatalogProducts(nextProducts);
+  await createCatalogProduct(product);
 
   return NextResponse.json(product, { status: 201, headers: jsonHeaders() });
 }
 
 export async function PATCH(request: Request) {
   const body = (await request.json()) as { id: string; updates: Partial<Product> };
-  const products = await readCatalogProducts();
+  const nextProducts = await updateCatalogProduct(body.id, body.updates);
 
-  const nextProducts = products.map((product) =>
-    product.id === body.id ? { ...product, ...body.updates } : product
-  );
+  return NextResponse.json(nextProducts, { headers: jsonHeaders() });
+}
 
-  await writeCatalogProducts(nextProducts);
+export async function DELETE(request: Request) {
+  const body = (await request.json()) as { id: string };
+  const nextProducts = await deleteCatalogProduct(body.id);
 
   return NextResponse.json(nextProducts, { headers: jsonHeaders() });
 }

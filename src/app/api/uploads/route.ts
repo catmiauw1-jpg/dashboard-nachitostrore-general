@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { jsonHeaders } from "@/lib/catalogStore";
+import { createSupabaseAdminClient } from "@/lib/supabase";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -38,9 +39,28 @@ export async function POST(request: Request) {
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
   const fileName = safeFileName(file.name);
+  const supabase = createSupabaseAdminClient();
 
+  if (supabase) {
+    const storagePath = `products/${fileName}`;
+    const { error } = await supabase.storage.from("product-images").upload(storagePath, bytes, {
+      contentType: file.type,
+      upsert: true
+    });
+
+    if (error) {
+      return NextResponse.json(
+        { error: `No se pudo subir la imagen a Supabase: ${error.message}` },
+        { status: 500, headers: jsonHeaders() }
+      );
+    }
+
+    const { data } = supabase.storage.from("product-images").getPublicUrl(storagePath);
+    return NextResponse.json({ imageUrl: data.publicUrl }, { headers: jsonHeaders() });
+  }
+
+  const uploadsDir = path.join(process.cwd(), "public", "uploads");
   await mkdir(uploadsDir, { recursive: true });
   await writeFile(path.join(uploadsDir, fileName), bytes);
 

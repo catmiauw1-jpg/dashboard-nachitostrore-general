@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { jsonHeaders, readCatalogProducts } from "@/lib/catalogStore";
+import { jsonHeaders } from "@/lib/catalogStore";
+import { readPublicCatalogProducts } from "@/lib/productRepository";
 
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: jsonHeaders() });
 }
 
 export async function GET() {
-  const products = await readCatalogProducts();
-  const publicProducts = products.filter((product) => !product.isHidden);
+  const publicProducts = await readPublicCatalogProducts({ includeHidden: true });
 
   return NextResponse.json(publicProducts, { headers: jsonHeaders() });
 }

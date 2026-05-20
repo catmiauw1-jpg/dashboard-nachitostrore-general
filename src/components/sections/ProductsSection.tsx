@@ -6,6 +6,7 @@ import type { Product } from "@/types";
 interface ProductsSectionProps {
   products: Product[];
   onAddProduct: (product: Product) => void | Promise<void>;
+  onDeleteProduct: (productId: string) => void | Promise<void>;
   onToggleHidden: (productId: string) => void;
   onToggleSoldOut: (productId: string) => void;
   onUpdateProduct: (productId: string, updates: Partial<Product>) => void | Promise<void>;
@@ -13,10 +14,21 @@ interface ProductsSectionProps {
 
 const defaultSizes = "S, M, L, XL";
 const defaultColors = "Blanco, Negro";
+const webCategories = [
+  { value: "anime", label: "Anime" },
+  { value: "basket", label: "Basket" },
+  { value: "streetwear", label: "Streetwear" },
+  { value: "gatos", label: "Gatos" },
+  { value: "perros", label: "Perros" },
+  { value: "meme", label: "Meme" },
+  { value: "futbol", label: "Fútbol" },
+  { value: "catalogo", label: "Catálogo" }
+];
 
 export function ProductsSection({
   products,
   onAddProduct,
+  onDeleteProduct,
   onToggleHidden,
   onToggleSoldOut,
   onUpdateProduct
@@ -24,6 +36,8 @@ export function ProductsSection({
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [category, setCategory] = useState<Product["category"]>("Oversize");
+  const [webCategory, setWebCategory] = useState("catalogo");
+  const [description, setDescription] = useState("");
   const [basePrice, setBasePrice] = useState(150);
   const [colors, setColors] = useState(defaultColors);
   const [sizes, setSizes] = useState(defaultSizes);
@@ -36,6 +50,8 @@ export function ProductsSection({
     setEditingProductId(null);
     setName("");
     setCategory("Oversize");
+    setWebCategory("catalogo");
+    setDescription("");
     setBasePrice(150);
     setColors(defaultColors);
     setSizes(defaultSizes);
@@ -49,7 +65,7 @@ export function ProductsSection({
     setImageFile(file);
 
     if (!file) {
-      setImagePreview("");
+      setImagePreview(currentImageUrl);
       return;
     }
 
@@ -87,6 +103,8 @@ export function ProductsSection({
         id: editingProductId ?? `prod-${Date.now()}`,
         name: cleanName,
         category,
+        webCategory,
+        description: description.trim(),
         basePrice: Math.max(0, basePrice),
         colors: colors
           .split(",")
@@ -115,12 +133,22 @@ export function ProductsSection({
     setEditingProductId(product.id);
     setName(product.name);
     setCategory(product.category);
+    setWebCategory(product.webCategory ?? "catalogo");
+    setDescription(product.description ?? "");
     setBasePrice(product.basePrice);
     setColors(product.colors.join(", "));
     setSizes(product.sizes.join(", "));
     setCurrentImageUrl(product.imageUrl ?? "");
     setImagePreview(product.imageUrl ?? "");
     setImageFile(null);
+  };
+
+  const handleDelete = async (product: Product) => {
+    const shouldDelete = window.confirm(`Eliminar "${product.name}" del catálogo?`);
+    if (!shouldDelete) return;
+
+    if (editingProductId === product.id) resetForm();
+    await onDeleteProduct(product.id);
   };
 
   return (
@@ -138,7 +166,7 @@ export function ProductsSection({
           <div className="panel-header">
             <div>
               <h3>{editingProductId ? "Editar producto" : "Agregar producto"}</h3>
-              <p>Adjunta imagen, define precio, tallas, colores y visibilidad.</p>
+              <p>Adjunta imagen, descripción, precio, tallas, colores y visibilidad.</p>
             </div>
             <span className="badge accent">{editingProductId ? "Edición" : "Formulario"}</span>
           </div>
@@ -153,9 +181,18 @@ export function ProductsSection({
               />
             </label>
 
-            <div className="form-grid three-columns">
+            <label className="field wide-field">
+              <span>Descripción</span>
+              <textarea
+                placeholder="Ej: Polera oversize de algodón premium con estampado DTF."
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </label>
+
+            <div className="form-grid four-columns">
               <label className="field">
-                <span>Categoría</span>
+                <span>Tipo</span>
                 <select
                   value={category}
                   onChange={(event) => setCategory(event.target.value as Product["category"])}
@@ -163,6 +200,17 @@ export function ProductsSection({
                   <option value="Oversize">Oversize</option>
                   <option value="Regular">Regular</option>
                   <option value="Personalizada">Personalizada</option>
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Categoría web</span>
+                <select value={webCategory} onChange={(event) => setWebCategory(event.target.value)}>
+                  {webCategories.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -243,20 +291,23 @@ export function ProductsSection({
 
         <div className="product-grid">
           {products.map((product) => (
-            <article className="product-card" key={product.id}>
-              {product.imageUrl ? (
-                <div className="dashboard-product-image">
+            <article className="product-card web-style-product-card" key={product.id}>
+              <div className="dashboard-product-visual">
+                {product.imageUrl ? (
                   <img src={product.imageUrl} alt={product.name} />
-                </div>
-              ) : (
-                <div className="dashboard-product-placeholder">PF</div>
-              )}
-              <div>
-                <span className="product-category">{product.category}</span>
-                <h3>{product.name}</h3>
-                <p>{product.colors.join(", ")}</p>
-                <p>{product.sizes.join(" · ")}</p>
+                ) : (
+                  <span>PF</span>
+                )}
               </div>
+
+              <div className="dashboard-product-info">
+                <span className="product-category">{product.webCategory ?? product.category}</span>
+                <h3>{product.name}</h3>
+                <p>{product.colors.length ? product.colors.join(", ") : "Color por confirmar"}</p>
+                <p>{product.sizes.length ? product.sizes.join(" · ") : "Tallas por confirmar"}</p>
+                {product.description ? <p className="product-description-line">{product.description}</p> : null}
+              </div>
+
               <div className="product-card-footer">
                 <strong>{product.basePrice} Bs</strong>
                 <div className="product-actions">
@@ -269,8 +320,12 @@ export function ProductsSection({
                   <button className="btn" onClick={() => onToggleHidden(product.id)} type="button">
                     {product.isHidden ? "Mostrar" : "Ocultar"}
                   </button>
+                  <button className="btn danger-btn" onClick={() => handleDelete(product)} type="button">
+                    Eliminar
+                  </button>
                 </div>
               </div>
+
               <div className="product-badges">
                 {product.isSoldOut ? <span className="badge danger">Agotado</span> : null}
                 {product.isHidden ? <span className="badge warning">Oculto</span> : null}
