@@ -43,6 +43,17 @@ export type OrderSource = "Web catálogo" | "Web personaliza" | "WhatsApp bot" |
 
 export type BotOrderStatus = "Bot registrado" | "Esperando comprobante" | "Atención manual";
 
+export interface OrderLineItem {
+  productName: string;
+  size?: string;
+  color?: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  isCustom?: boolean;
+  description?: string;
+}
+
 export interface ChartPoint {
   label: string;
   ventas: number;
@@ -101,6 +112,7 @@ export interface Order {
   id: string;
   customer: string;
   customerPhone?: string;
+  createdAt?: string;
   type: OrderType;
   product: string;
   size?: string;
@@ -117,6 +129,7 @@ export interface Order {
   designDetails?: string;
   quoteOption?: string;
   referenceImages?: string[];
+  items?: OrderLineItem[];
 }
 
 export interface Conversation {

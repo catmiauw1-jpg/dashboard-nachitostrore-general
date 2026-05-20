@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonHeaders } from "@/lib/catalogStore";
 import { createOrder, readOrders, updateOrder } from "@/lib/orderRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase";
-import type { Order } from "@/types";
+import type { Order, OrderLineItem } from "@/types";
 
 const referenceBucket = "order-references";
 
@@ -32,6 +32,17 @@ function numericValue(value: string, fallback: number) {
 
 function orderNumber() {
   return `WEB-${Date.now().toString().slice(-8)}`;
+}
+
+function parseItems(value: string): OrderLineItem[] {
+  if (!value) return [];
+
+  try {
+    const items = JSON.parse(value) as OrderLineItem[];
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
 }
 
 async function uploadReferences(formData: FormData, orderId: string) {
@@ -71,6 +82,7 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
   const quantity = numericValue(valueOf(formData, "quantity"), 1);
   const total = numericValue(valueOf(formData, "total"), 0);
   const references = await uploadReferences(formData, id);
+  const items = parseItems(valueOf(formData, "items"));
 
   return {
     id: `#${id}`,
@@ -90,7 +102,21 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
     botStatus: "Esperando comprobante",
     designDetails: valueOf(formData, "designDetails") || undefined,
     quoteOption: valueOf(formData, "quoteOption") || undefined,
-    referenceImages: references
+    referenceImages: references,
+    items: items.length
+      ? items
+      : [
+          {
+            productName: valueOf(formData, "product") || (type === "Catálogo" ? "Pedido catálogo" : "Polera personalizada"),
+            size: valueOf(formData, "size") || undefined,
+            color: valueOf(formData, "color") || undefined,
+            quantity,
+            unitPrice: quantity > 0 ? total / quantity : total,
+            lineTotal: total,
+            isCustom: type === "Personalizada",
+            description: valueOf(formData, "designDetails") || undefined
+          }
+        ]
   };
 }
 

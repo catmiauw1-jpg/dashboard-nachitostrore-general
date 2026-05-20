@@ -489,13 +489,14 @@ body.dark .btn.primary {
 
 .orders-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(420px, 0.95fr) minmax(440px, 1.05fr);
   gap: 18px;
   align-items: start;
 }
 
 .production-panel,
-.custom-inbox-panel {
+.custom-inbox-panel,
+.order-detail-panel {
   min-width: 0;
 }
 
@@ -514,10 +515,31 @@ body.dark .btn.primary {
 }
 
 .production-order-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.76fr);
-  gap: 14px;
-  align-items: center;
+  width: 100%;
+  display: block;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.production-order-card:hover,
+.production-order-card.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--accent) 22%);
+}
+
+.production-order-card.active {
+  transform: translateY(-1px);
+}
+
+.order-list-products {
+  display: block;
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .order-card-head {
@@ -580,6 +602,146 @@ body.dark .btn.primary {
 
 .order-control-grid .btn {
   grid-column: 1 / -1;
+}
+
+.order-detail-panel {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.order-detail-time,
+.order-detail-total,
+.order-detail-block {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 14px;
+  background: var(--surface-soft);
+}
+
+.order-detail-time,
+.order-detail-total {
+  display: grid;
+  gap: 5px;
+}
+
+.order-detail-time span,
+.order-detail-total span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.order-detail-time strong {
+  font-size: 18px;
+}
+
+.order-detail-total strong {
+  font-size: 28px;
+}
+
+.order-detail-total small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-controls {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 14px;
+  background: var(--surface-soft);
+}
+
+.order-detail-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.order-detail-title h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.order-detail-title span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.order-line-list {
+  display: grid;
+  gap: 10px;
+}
+
+.order-line-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.order-line-item strong {
+  display: block;
+  font-size: 13px;
+}
+
+.order-line-item p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.order-line-numbers {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.order-line-numbers span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.order-line-numbers strong {
+  font-size: 15px;
+}
+
+.order-detail-notes {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 20px;
+  padding: 18px;
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.empty-state strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.empty-state p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .reference-preview-grid {
@@ -2049,6 +2211,10 @@ body.dark .field select option {
     grid-template-columns: 1fr;
   }
 
+  .order-detail-panel {
+    position: static;
+  }
+
   .order-flow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2173,6 +2339,14 @@ body.dark .field select option {
 
   .order-control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .order-line-item {
+    grid-template-columns: 1fr;
+  }
+
+  .order-line-numbers {
+    text-align: left;
   }
 
   .search {
