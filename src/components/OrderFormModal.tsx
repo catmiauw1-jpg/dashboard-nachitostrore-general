@@ -109,6 +109,7 @@ export function OrderFormModal({
       source: channel === "Web" ? (orderType === "Catálogo" ? "Web catálogo" : "Web personaliza") : "Manual",
       botStatus: channel === "WhatsApp" || channel === "Web" ? "Bot registrado" : "Atención manual",
       designDetails: orderType === "Personalizada" ? notes.trim() || "Pendiente de revisar referencias." : undefined,
+      quoteOption: orderType === "Personalizada" ? "Cotización por definir" : undefined,
       referenceImages: orderType === "Personalizada" ? ["Referencia pendiente"] : undefined
     });
 

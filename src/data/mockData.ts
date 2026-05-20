@@ -259,7 +259,11 @@ export const orders: Order[] = [
     color: "Blanco arena",
     size: "M",
     designDetails: "Diseño frontal pequeño, frase corta y estilo minimal.",
-    referenceImages: ["Logo NS", "Boceto enviado"]
+    quoteOption: "Solo frente pequeño",
+    referenceImages: [
+      "https://nachitostore.netlify.app/imagenes/medidas%20de%20camisas/solo%20frente%20peque%C3%B1o%20blanco%20hueso.png",
+      "Logo NS"
+    ]
   },
   {
     id: "#1027",
@@ -291,7 +295,12 @@ export const orders: Order[] = [
     color: "Negro",
     size: "XL",
     designDetails: "Imagen grande en espalda con texto blanco. Cliente pidió revisar tamaño antes de imprimir.",
-    referenceImages: ["Referencia 1", "Referencia 2", "Detalle texto"]
+    quoteOption: "Solo espalda grande",
+    referenceImages: [
+      "https://nachitostore.netlify.app/imagenes/medidas%20de%20camisas/solo%20espalda%20grande%20negro.png",
+      "Referencia del cliente",
+      "Detalle texto"
+    ]
   }
 ];
 

@@ -115,6 +115,7 @@ export interface Order {
   source?: OrderSource;
   botStatus?: BotOrderStatus;
   designDetails?: string;
+  quoteOption?: string;
   referenceImages?: string[];
 }
 
