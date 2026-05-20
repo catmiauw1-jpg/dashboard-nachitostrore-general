@@ -37,6 +37,10 @@ export function badgeClass(value: string) {
   return "info";
 }
 
+export function displayStockName(name: string) {
+  return name.replace(/^Polera base DTF\s+/i, "Polera ");
+}
+
 export const months: MonthKey[] = [
   "enero",
   "febrero",

@@ -1,4 +1,4 @@
-import { badgeClass } from "@/lib/format";
+import { badgeClass, displayStockName } from "@/lib/format";
 import type { StockItem } from "@/types";
 
 interface CriticalStockPanelProps {
@@ -25,7 +25,7 @@ export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
           return (
             <div className="stock-item" key={item.item}>
               <div>
-                <h4>{item.item}</h4>
+                <h4>{displayStockName(item.item)}</h4>
                 <p>
                   Mínimo sugerido: {item.min} · Disponible: {item.available}
                 </p>

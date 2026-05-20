@@ -20,5 +20,19 @@ export function Toast({ message, onDone }: ToastProps) {
     return () => window.clearTimeout(timer);
   }, [message, onDone]);
 
-  return <div className={`toast ${visible ? "show" : ""}`}>{message}</div>;
+  const closeToast = () => {
+    setVisible(false);
+    onDone();
+  };
+
+  if (!message) return null;
+
+  return (
+    <div className={`toast ${visible ? "show" : ""}`} role="status">
+      <span>{message}</span>
+      <button aria-label="Cerrar notificación" className="toast-close" onClick={closeToast} type="button">
+        ×
+      </button>
+    </div>
+  );
 }

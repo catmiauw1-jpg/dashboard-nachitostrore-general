@@ -1992,10 +1992,14 @@ td small {
   position: fixed;
   right: 22px;
   bottom: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   background: var(--surface-solid);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 14px 18px;
+  padding: 12px 12px 12px 16px;
   border-radius: 18px;
   box-shadow: var(--shadow);
   transform: translateY(120px);
@@ -2005,6 +2009,31 @@ td small {
   max-width: 340px;
   font-size: 13px;
   font-weight: 750;
+}
+
+.toast span {
+  min-width: 0;
+}
+
+.toast-close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 900;
+  transition: 0.2s ease;
+}
+
+.toast-close:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
 }
 
 .toast.show {

@@ -11,6 +11,7 @@ import { StockSection } from "@/components/sections/StockSection";
 import { Sidebar } from "@/components/Sidebar";
 import { Toast } from "@/components/Toast";
 import { Topbar } from "@/components/Topbar";
+import { displayStockName } from "@/lib/format";
 import {
   chartData,
   customers,
@@ -436,7 +437,7 @@ export function Dashboard() {
         }),
         () => stockSaveVersionRef.current[item.id] === nextVersion
       );
-      showToast(`Stock actualizado: ${item.item}.`);
+      showToast(`Stock actualizado: ${displayStockName(item.item)}.`);
     } catch {
       showToast("El stock quedÃ³ local, pero no se pudo guardar en la API.");
     }
