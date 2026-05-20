@@ -13,12 +13,8 @@ import { Toast } from "@/components/Toast";
 import { Topbar } from "@/components/Topbar";
 import { displayStockName } from "@/lib/format";
 import {
-  chartData,
-  customers,
   initialChats,
-  metrics as fallbackMetrics,
   navigationItems,
-  orders,
   products,
   stockData
 } from "@/data/mockData";
@@ -160,13 +156,13 @@ export function Dashboard() {
   const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
   const [isDark, setIsDark] = useState(true);
   const [chats, setChats] = useState<Conversation[]>(initialChats);
-  const [orderList, setOrderList] = useState<Order[]>(orders);
+  const [orderList, setOrderList] = useState<Order[]>([]);
   const [productList, setProductList] = useState<Product[]>(products);
   const [stockList, setStockList] = useState<StockItem[]>(stockData);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [toast, setToast] = useState("");
   const stockSaveVersionRef = useRef<Record<string, number>>({});
-  const orderIdsRef = useRef(new Set(orders.map((order) => order.id)));
+  const orderIdsRef = useRef(new Set<string>());
   const hasLoadedOrdersRef = useRef(false);
 
   const showToast = (message: string) => {
@@ -240,7 +236,7 @@ export function Dashboard() {
 
         if (ordersResponse.ok) {
           const nextOrders = (await ordersResponse.json()) as Order[];
-          if (nextOrders.length) setOrderList(nextOrders);
+          setOrderList(nextOrders);
           orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
           hasLoadedOrdersRef.current = true;
         }
@@ -486,15 +482,10 @@ export function Dashboard() {
   };
 
   const liveMetrics = useMemo(() => {
-    const hasLiveOrders = orderList.some((order) => Boolean(order.createdAt));
-    return hasLiveOrders ? buildLiveMetrics(orderList) : fallbackMetrics;
+    return buildLiveMetrics(orderList);
   }, [orderList]);
   const liveChartData = useMemo(() => {
-    const nextChartData = buildLiveChartData(orderList);
-    const hasLiveData = nextChartData.weekly.some((point) => point.pedidos > 0) ||
-      nextChartData.yearly.some((point) => point.pedidos > 0);
-
-    return hasLiveData ? nextChartData : chartData;
+    return buildLiveChartData(orderList);
   }, [orderList]);
 
   const renderActiveSection = () => {
@@ -584,7 +575,7 @@ export function Dashboard() {
       </div>
 
       <OrderFormModal
-        customers={customers}
+        customers={[]}
         isOpen={isOrderModalOpen}
         nextOrderNumber={getNextOrderNumber()}
         products={productList}

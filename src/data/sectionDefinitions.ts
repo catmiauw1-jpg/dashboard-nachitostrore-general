@@ -156,9 +156,9 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
     description: "Consulta compradores frecuentes, teléfonos, tallas preferidas y compras anteriores.",
     primaryAction: "Agregar cliente",
     summary: [
-      { label: "Registrados", value: "3", detail: "Mock inicial" },
-      { label: "Frecuentes", value: "1", detail: "Más de una compra" },
-      { label: "WhatsApp", value: "3", detail: "Con teléfono" }
+      { label: "Registrados", value: "0", detail: "Sin clientes todavía" },
+      { label: "Frecuentes", value: "0", detail: "Sin compras registradas" },
+      { label: "WhatsApp", value: "0", detail: "Sin teléfonos guardados" }
     ],
     mainPanel: {
       title: "Perfil del cliente",
@@ -195,9 +195,9 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
     description: "Registra costos de poleras, DTF, empaques, publicidad y entregas.",
     primaryAction: "Registrar gasto",
     summary: [
-      { label: "Mes actual", value: "610 Bs", detail: "Mock de costos" },
-      { label: "Publicidad", value: "120 Bs", detail: "Campañas" },
-      { label: "Insumos", value: "490 Bs", detail: "Poleras y DTF" }
+      { label: "Mes actual", value: "0 Bs", detail: "Sin gastos registrados" },
+      { label: "Publicidad", value: "0 Bs", detail: "Sin campañas registradas" },
+      { label: "Insumos", value: "0 Bs", detail: "Sin compras registradas" }
     ],
     mainPanel: {
       title: "Control de costos",

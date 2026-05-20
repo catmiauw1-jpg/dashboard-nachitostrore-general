@@ -9,7 +9,7 @@ export function Topbar({ isDark, onRegisterOrder, onToggleTheme }: TopbarProps) 
     <div className="topbar">
       <div className="business-pill">
         <span className="live-dot" />
-        Datos de ejemplo · actualización en tiempo real
+        Datos reales · actualización en tiempo real
       </div>
       <div className="actions">
         <button className="btn primary" onClick={onRegisterOrder} type="button">

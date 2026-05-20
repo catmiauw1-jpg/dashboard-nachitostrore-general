@@ -120,7 +120,7 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
 
         <div className="performance-list">
           {currentData.map((item) => {
-            const width = Math.max(4, Math.round((item.ventas / maxSales) * 100));
+            const width = item.ventas > 0 ? Math.max(4, Math.round((item.ventas / maxSales) * 100)) : 0;
 
             return (
               <div className="performance-row" key={item.label}>

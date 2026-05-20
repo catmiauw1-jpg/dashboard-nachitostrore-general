@@ -1,4 +1,3 @@
-import { orders as fallbackOrders } from "@/data/mockData";
 import { adjustStockByColorSize } from "@/lib/stockRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import type {
@@ -248,7 +247,7 @@ async function deductOrderStock(order: Order) {
 
 export async function readOrders(): Promise<Order[]> {
   const supabase = createSupabaseAdminClient();
-  if (!supabase) return fallbackOrders;
+  if (!supabase) return [];
 
   const { data, error } = await supabase
     .from("orders")
@@ -257,7 +256,7 @@ export async function readOrders(): Promise<Order[]> {
 
   if (error) {
     console.warn("Supabase orders read failed.", error.message);
-    return fallbackOrders;
+    return [];
   }
 
   return (data as OrderRow[]).map(rowToOrder);
@@ -265,7 +264,7 @@ export async function readOrders(): Promise<Order[]> {
 
 export async function createOrder(order: Order): Promise<Order[]> {
   const supabase = createSupabaseAdminClient();
-  if (!supabase) return [order, ...fallbackOrders];
+  if (!supabase) return [order];
 
   const items = orderItemsForInsert(order);
   const total = Math.max(
@@ -304,7 +303,7 @@ export async function createOrder(order: Order): Promise<Order[]> {
 
 export async function updateOrder(orderId: string, updates: Partial<Order>): Promise<Order[]> {
   const supabase = createSupabaseAdminClient();
-  if (!supabase) return fallbackOrders;
+  if (!supabase) return [];
 
   const { data: currentRow, error: currentError } = await supabase
     .from("orders")
