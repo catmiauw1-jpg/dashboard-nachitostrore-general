@@ -11,10 +11,11 @@ export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
 
   const filteredOrders = useMemo(() => {
     const normalizedQuery = query.toLowerCase().trim();
+    const activeOrders = orders.filter((order) => order.status !== "Cancelado");
 
-    if (!normalizedQuery) return orders;
+    if (!normalizedQuery) return activeOrders;
 
-    return orders.filter((order) =>
+    return activeOrders.filter((order) =>
       `${order.id} ${order.customer} ${order.product} ${order.payment} ${order.status} ${order.channel}`
         .toLowerCase()
         .includes(normalizedQuery)
