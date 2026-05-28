@@ -2467,6 +2467,10 @@ td small {
   flex-direction: column;
 }
 
+.improved-order-modal {
+  width: min(1120px, 100%);
+}
+
 .modal-head {
   display: flex;
   align-items: flex-start;
@@ -2475,6 +2479,12 @@ td small {
   padding: 22px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(135deg, var(--accent-soft), transparent);
+}
+
+.improved-modal-head {
+  background:
+    radial-gradient(circle at 0 0, var(--accent-soft), transparent 42%),
+    linear-gradient(135deg, var(--surface-solid), var(--surface));
 }
 
 .modal-head h2 {
@@ -2506,6 +2516,17 @@ td small {
   padding: 18px 22px 22px;
 }
 
+.improved-order-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+.order-form-main {
+  min-width: 0;
+}
+
 .form-block {
   border: 1px solid var(--border);
   border-radius: 22px;
@@ -2534,6 +2555,99 @@ td small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.order-type-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.order-type-card {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.order-type-card span {
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.order-type-card strong {
+  font-size: 15px;
+}
+
+.order-type-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.order-type-card:hover,
+.order-type-card.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--accent) 22%);
+  transform: translateY(-1px);
+}
+
+.order-form-summary {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 44%),
+    var(--surface);
+}
+
+.order-form-summary h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.summary-row,
+.summary-total {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+
+.summary-row span,
+.summary-total span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.summary-row strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.summary-total strong {
+  font-size: 24px;
 }
 
 .segmented-control {
@@ -2744,6 +2858,15 @@ body.dark .field select option {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .improved-order-form {
+    grid-template-columns: 1fr;
+  }
+
+  .order-form-summary {
+    position: static;
+    order: -1;
+  }
+
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2833,6 +2956,10 @@ body.dark .field select option {
   .two-columns,
   .three-columns,
   .four-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .order-type-cards {
     grid-template-columns: 1fr;
   }
 

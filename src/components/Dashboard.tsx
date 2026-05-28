@@ -153,6 +153,24 @@ function buildLiveMetrics(ordersToSummarize: Order[]): Metric[] {
   ];
 }
 
+function customersFromOrders(orders: Order[]) {
+  const customersByKey = new Map<string, { id: string; name: string; phone: string; channel: Order["channel"] }>();
+
+  orders.forEach((order) => {
+    const key = order.customerPhone?.trim() || order.customer.trim().toLowerCase();
+    if (!key || customersByKey.has(key)) return;
+
+    customersByKey.set(key, {
+      id: key,
+      name: order.customer || "Cliente sin nombre",
+      phone: order.customerPhone || "Sin WhatsApp",
+      channel: order.channel
+    });
+  });
+
+  return [...customersByKey.values()];
+}
+
 export function Dashboard() {
   const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
   const [isDark, setIsDark] = useState(true);
@@ -303,7 +321,19 @@ export function Dashboard() {
   const handleCreateOrder = (order: Order) => {
     setOrderList((currentOrders) => [order, ...currentOrders]);
     setActiveSection("pedidos");
-    showToast(`Pedido ${order.id} registrado correctamente.`);
+    void (async () => {
+      try {
+        await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(order)
+        });
+        await refreshBusinessData({ notifyNewOrders: false });
+        showToast(`Pedido ${order.id} registrado correctamente.`);
+      } catch {
+        showToast(`Pedido ${order.id} quedó local, pero no se pudo guardar en la API.`);
+      }
+    })();
   };
 
   const handleUpdateOrder = (orderId: string, updates: Partial<Order>) => {
@@ -503,6 +533,7 @@ export function Dashboard() {
     const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
     return buildLiveMetrics(countedOrders);
   }, [orderList]);
+  const customerOptions = useMemo(() => customersFromOrders(orderList), [orderList]);
   const liveChartData = useMemo(() => {
     const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
     return buildLiveChartData(countedOrders);
@@ -600,7 +631,7 @@ export function Dashboard() {
       </div>
 
       <OrderFormModal
-        customers={[]}
+        customers={customerOptions}
         isOpen={isOrderModalOpen}
         nextOrderNumber={getNextOrderNumber()}
         products={productList}
