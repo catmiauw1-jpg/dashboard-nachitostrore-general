@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
-import { jsonHeaders } from "@/lib/catalogStore";
 import { createOrder, readOrders, updateOrder } from "@/lib/orderRepository";
+import {
+  RequestSecurityError,
+  assertAllowedOrigin,
+  assertBodySize,
+  assertRateLimit,
+  cleanText,
+  secureJsonHeaders
+} from "@/lib/requestSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import type { Order, OrderLineItem } from "@/types";
 
 const referenceBucket = "order-references";
+const catalogType = "Cat\u00e1logo" as const;
+const maxOrderBodyBytes = 12 * 1024 * 1024;
+const maxReferenceFiles = 5;
+const maxReferenceFileBytes = 5 * 1024 * 1024;
+const allowedReferenceTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 async function ensureReferenceBucket() {
   const supabase = createSupabaseAdminClient();
@@ -54,8 +66,53 @@ function parseItems(value: string): OrderLineItem[] {
   }
 }
 
-async function uploadReferences(formData: FormData, orderId: string) {
+function normalizePhone(value: string) {
+  return value.replace(/[^\d+]/g, "").slice(0, 24);
+}
+
+function safeQuantity(value: number) {
+  return Math.min(Math.max(1, Math.round(value || 1)), 50);
+}
+
+function safeMoney(value: number) {
+  return Math.min(Math.max(0, Number.isFinite(value) ? value : 0), 50_000);
+}
+
+function safeItems(items: OrderLineItem[]): OrderLineItem[] {
+  return items.slice(0, 20).map((item) => ({
+    ...item,
+    productName: cleanText(item.productName, 120) || "Prenda",
+    color: cleanText(item.color, 60) || undefined,
+    size: cleanText(item.size, 20) || undefined,
+    quantity: safeQuantity(Number(item.quantity)),
+    unitPrice: safeMoney(Number(item.unitPrice)),
+    lineTotal: safeMoney(Number(item.lineTotal)),
+    description: cleanText(item.description, 300) || undefined
+  }));
+}
+
+function validReferenceFiles(formData: FormData) {
   const files = formData.getAll("references").filter((value): value is File => value instanceof File && value.size > 0);
+
+  if (files.length > maxReferenceFiles) {
+    throw new RequestSecurityError(`Puedes subir hasta ${maxReferenceFiles} imagenes por pedido.`, 413);
+  }
+
+  files.forEach((file) => {
+    if (file.size > maxReferenceFileBytes) {
+      throw new RequestSecurityError("Una imagen supera el tamano permitido.", 413);
+    }
+
+    if (file.type && !allowedReferenceTypes.has(file.type)) {
+      throw new RequestSecurityError("Solo se permiten imagenes JPG, PNG, WEBP o GIF.", 415);
+    }
+  });
+
+  return files;
+}
+
+async function uploadReferences(formData: FormData, orderId: string) {
+  const files = validReferenceFiles(formData);
   if (!files.length) return [] as string[];
 
   const supabase = await ensureReferenceBucket();
@@ -87,40 +144,43 @@ async function uploadReferences(formData: FormData, orderId: string) {
 
 async function orderFromFormData(formData: FormData): Promise<Order> {
   const id = orderNumber();
-  const type = valueOf(formData, "type") === "Catálogo" ? "Catálogo" : "Personalizada";
-  const quantity = numericValue(valueOf(formData, "quantity"), 1);
-  const total = numericValue(valueOf(formData, "total"), 0);
+  const type = valueOf(formData, "type") === catalogType ? catalogType : "Personalizada";
+  const quantity = safeQuantity(numericValue(valueOf(formData, "quantity"), 1));
+  const total = safeMoney(numericValue(valueOf(formData, "total"), 0));
   const references = await uploadReferences(formData, id);
-  const items = parseItems(valueOf(formData, "items"));
-  const designDetails = firstValueOf(formData, ["designDetails", "customDetails", "details", "message", "notes"]);
-  const notes = firstValueOf(formData, ["notes", "designDetails", "customDetails", "details", "message"]);
+  const items = safeItems(parseItems(valueOf(formData, "items")));
+  const designDetails = cleanText(firstValueOf(formData, ["designDetails", "customDetails", "details", "message", "notes"]), 1000);
+  const notes = cleanText(firstValueOf(formData, ["notes", "designDetails", "customDetails", "details", "message"]), 1000);
+  const product = cleanText(valueOf(formData, "product"), 120) || (type === catalogType ? "Pedido catalogo" : "Polera personalizada");
+  const size = cleanText(valueOf(formData, "size"), 20) || undefined;
+  const color = cleanText(valueOf(formData, "color"), 60) || undefined;
 
   return {
     id: `#${id}`,
-    customer: valueOf(formData, "customer") || "Cliente web",
-    customerPhone: valueOf(formData, "phone") || undefined,
+    customer: cleanText(valueOf(formData, "customer"), 80) || "Cliente web",
+    customerPhone: normalizePhone(valueOf(formData, "phone")) || undefined,
     type,
-    product: valueOf(formData, "product") || (type === "Catálogo" ? "Pedido catálogo" : "Polera personalizada"),
-    size: valueOf(formData, "size") || undefined,
-    color: valueOf(formData, "color") || undefined,
+    product,
+    size,
+    color,
     payment: "Pendiente",
     status: "Esperando pago",
     total,
     channel: "Web",
     prendas: quantity,
     notes: notes || undefined,
-    source: type === "Catálogo" ? "Web catálogo" : "Web personaliza",
+    source: type === catalogType ? "Web cat\u00e1logo" : "Web personaliza",
     botStatus: "Esperando comprobante",
     designDetails: designDetails || undefined,
-    quoteOption: valueOf(formData, "quoteOption") || undefined,
+    quoteOption: cleanText(valueOf(formData, "quoteOption"), 120) || undefined,
     referenceImages: references,
     items: items.length
       ? items
       : [
           {
-            productName: valueOf(formData, "product") || (type === "Catálogo" ? "Pedido catálogo" : "Polera personalizada"),
-            size: valueOf(formData, "size") || undefined,
-            color: valueOf(formData, "color") || undefined,
+            productName: product,
+            size,
+            color,
             quantity,
             unitPrice: quantity > 0 ? total / quantity : total,
             lineTotal: total,
@@ -132,52 +192,71 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
 }
 
 function orderFromJson(payload: Order & Record<string, unknown>): Order {
-  const designDetails = [
-    payload.designDetails,
-    payload.customDetails,
-    payload.details,
-    payload.message,
-    payload.notes
-  ].find((value) => typeof value === "string" && value.trim()) as string | undefined;
-  const notes = [payload.notes, designDetails].find((value) => typeof value === "string" && value.trim()) as
-    | string
-    | undefined;
+  const rawItems = Array.isArray(payload.items) ? (payload.items as OrderLineItem[]) : [];
+  const designDetails =
+    cleanText(
+      [payload.designDetails, payload.customDetails, payload.details, payload.message, payload.notes].find(
+        (value) => typeof value === "string" && value.trim()
+      ),
+      1000
+    ) || undefined;
+  const notes = cleanText([payload.notes, designDetails].find((value) => typeof value === "string" && value.trim()), 1000) || undefined;
+  const type = payload.type === catalogType ? catalogType : "Personalizada";
 
   return {
     ...payload,
+    id: cleanText(payload.id, 40) || `#${orderNumber()}`,
+    customer: cleanText(payload.customer, 80) || "Cliente web",
+    customerPhone: normalizePhone(String(payload.customerPhone ?? payload.phone ?? "")) || undefined,
+    type,
+    product: cleanText(payload.product, 120) || (type === catalogType ? "Pedido catalogo" : "Polera personalizada"),
+    size: cleanText(payload.size, 20) || undefined,
+    color: cleanText(payload.color, 60) || undefined,
+    total: safeMoney(Number(payload.total)),
+    prendas: safeQuantity(Number(payload.prendas)),
     notes,
     designDetails: designDetails ?? payload.designDetails,
-    items: payload.items?.map((item) => ({
+    items: safeItems(rawItems).map((item) => ({
       ...item,
       description:
         item.description ??
-        (payload.type === "Personalizada" ? designDetails ?? payload.quoteOption ?? "Cotización por revisar" : undefined)
+        (type === "Personalizada" ? designDetails ?? String(payload.quoteOption ?? "Cotizacion por revisar") : undefined)
     }))
   };
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: jsonHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: secureJsonHeaders(request) });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const orders = await readOrders();
-  return NextResponse.json(orders, { headers: jsonHeaders() });
+  return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
 }
 
 export async function POST(request: Request) {
-  const contentType = request.headers.get("content-type") ?? "";
-  const order = contentType.includes("multipart/form-data")
-    ? await orderFromFormData(await request.formData())
-    : orderFromJson((await request.json()) as Order & Record<string, unknown>);
+  try {
+    assertAllowedOrigin(request);
+    assertBodySize(request, maxOrderBodyBytes);
+    assertRateLimit(request);
 
-  const orders = await createOrder(order);
-  return NextResponse.json(orders, { status: 201, headers: jsonHeaders() });
+    const contentType = request.headers.get("content-type") ?? "";
+    const order = contentType.includes("multipart/form-data")
+      ? await orderFromFormData(await request.formData())
+      : orderFromJson((await request.json()) as Order & Record<string, unknown>);
+
+    const orders = await createOrder(order);
+    return NextResponse.json(orders, { status: 201, headers: secureJsonHeaders(request) });
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 400;
+    const message = error instanceof Error ? error.message : "No se pudo registrar el pedido.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
+  }
 }
 
 export async function PATCH(request: Request) {
   const body = (await request.json()) as { id: string; updates: Partial<Order> };
   const orders = await updateOrder(body.id, body.updates);
 
-  return NextResponse.json(orders, { headers: jsonHeaders() });
+  return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
 }
