@@ -1046,6 +1046,40 @@ body.dark .customer-avatar {
   font-size: 14px;
 }
 
+.customers-filter {
+  margin: 0 0 14px;
+}
+
+.customer-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.customer-card-title strong {
+  min-width: 0;
+}
+
+.customer-source-pill {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.customer-source-pill.web {
+  border-color: rgba(34, 197, 94, 0.34);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 .customer-card p {
   margin: 5px 0 0;
   color: var(--muted);
