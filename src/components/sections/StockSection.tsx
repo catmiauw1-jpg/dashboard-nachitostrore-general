@@ -6,10 +6,10 @@ import type { Product, StockItem } from "@/types";
 interface StockSectionProps {
   products: Product[];
   stock: StockItem[];
+  onDeleteStockColor: (color: string) => void | Promise<void>;
   onUpdateStock: (item: StockItem) => void | Promise<void>;
 }
 
-const defaultColors = ["Blanco arena", "Negro"];
 const baseSizes = ["M", "L", "XL"];
 const baseProductId = "base-polera-dtf";
 const baseProductName = "Polera para DTF";
@@ -33,16 +33,16 @@ function resolveColorName(value: string, colors: string[]) {
   return colors.find((option) => normalizeColor(option) === normalizeColor(cleanColor)) ?? cleanColor;
 }
 
-export function StockSection({ stock, onUpdateStock }: StockSectionProps) {
+export function StockSection({ stock, onDeleteStockColor, onUpdateStock }: StockSectionProps) {
   const [visibleStock, setVisibleStock] = useState(stock);
   const visibleStockRef = useRef(stock);
   const pendingStockRef = useRef<Record<string, StockItem>>({});
   const syncTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const colors = useMemo(
-    () => [...new Set([...defaultColors, ...visibleStock.map((item) => item.color)].filter(Boolean))],
+    () => [...new Set(visibleStock.map((item) => item.color).filter(Boolean))],
     [visibleStock]
   );
-  const [color, setColor] = useState(defaultColors[0]);
+  const [color, setColor] = useState("");
   const [size, setSize] = useState(baseSizes[0]);
   const [quantity, setQuantity] = useState(1);
   const [min, setMin] = useState(1);
@@ -153,6 +153,39 @@ export function StockSection({ stock, onUpdateStock }: StockSectionProps) {
     visibleStockRef.current = nextStock;
     setVisibleStock(nextStock);
     scheduleStockSync(nextItem);
+  };
+
+  const handleDeleteColor = (baseColor: string) => {
+    const colorVariants = visibleStockRef.current.filter(
+      (item) => normalizeColor(item.color) === normalizeColor(baseColor)
+    );
+    const colorTotal = colorVariants.reduce((sum, item) => sum + item.available, 0);
+    const message = colorTotal > 0
+      ? `Vas a eliminar "${baseColor}" con ${colorTotal} prendas registradas. ¿Seguro que quieres borrarlo?`
+      : `¿Seguro que quieres eliminar el color "${baseColor}" del stock?`;
+
+    if (!window.confirm(message)) return;
+
+    colorVariants.forEach((item) => {
+      clearTimeout(syncTimersRef.current[item.id]);
+      delete syncTimersRef.current[item.id];
+      delete pendingStockRef.current[item.id];
+    });
+
+    const nextStock = visibleStockRef.current.filter(
+      (item) => normalizeColor(item.color) !== normalizeColor(baseColor)
+    );
+    visibleStockRef.current = nextStock;
+    setVisibleStock(nextStock);
+
+    if (normalizeColor(selectedColor) === normalizeColor(baseColor)) {
+      setColor("");
+      setSize(baseSizes[0]);
+      setQuantity(1);
+      setMin(1);
+    }
+
+    void onDeleteStockColor(baseColor);
   };
 
   return (
@@ -281,7 +314,9 @@ export function StockSection({ stock, onUpdateStock }: StockSectionProps) {
           </div>
 
           <div className="base-stock-board">
-            {colors.map((baseColor) => {
+            {colors.length === 0 ? (
+              <p className="empty-stock-note">No hay colores registrados. Escribe un color y suma stock para crearlo.</p>
+            ) : colors.map((baseColor) => {
               const variants = baseSizes.map((baseSize) => {
                 return stockByColor[baseColor]?.find((item) => item.size === baseSize) ?? {
                   id: stockId(baseColor, baseSize),
@@ -299,9 +334,18 @@ export function StockSection({ stock, onUpdateStock }: StockSectionProps) {
               return (
                 <div className="base-stock-card" key={baseColor}>
                   <div className="base-stock-card-head">
-                    <div>
-                      <span className={`base-color-swatch ${baseColor === "Negro" ? "black" : "sand"}`} />
-                      <h4>{baseColor}</h4>
+                    <div className="base-stock-title">
+                      <div>
+                        <span className={`base-color-swatch ${baseColor === "Negro" ? "black" : "sand"}`} />
+                        <h4>{baseColor}</h4>
+                      </div>
+                      <button
+                        className="base-stock-delete"
+                        onClick={() => handleDeleteColor(baseColor)}
+                        type="button"
+                      >
+                        Eliminar color
+                      </button>
                     </div>
                     <strong>{colorTotal} uds</strong>
                   </div>

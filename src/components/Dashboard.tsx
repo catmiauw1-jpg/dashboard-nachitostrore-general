@@ -468,6 +468,23 @@ export function Dashboard() {
     }
   };
 
+  const handleDeleteStockColor = async (color: string) => {
+    setStockList((currentStock) => currentStock.filter((stockItem) => stockItem.color !== color));
+
+    try {
+      await applyStockResponse(
+        await fetch("/api/stock", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ color })
+        })
+      );
+      showToast(`Color "${color}" eliminado del stock.`);
+    } catch {
+      showToast("El color se quitó localmente, pero no se pudo eliminar en la API.");
+    }
+  };
+
   const handleSectionPrimaryAction = () => {
     if (activeSection === "pedidos") {
       setIsOrderModalOpen(true);
@@ -538,6 +555,7 @@ export function Dashboard() {
         <StockSection
           products={productList}
           stock={stockList}
+          onDeleteStockColor={handleDeleteStockColor}
           onUpdateStock={handleUpdateStock}
         />
       );

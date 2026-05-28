@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonHeaders } from "@/lib/catalogStore";
 import { readCatalogProducts } from "@/lib/productRepository";
-import { adjustStockItem, readStockItems, upsertStockItem } from "@/lib/stockRepository";
+import { adjustStockItem, deleteStockColor, readStockItems, upsertStockItem } from "@/lib/stockRepository";
 import type { StockItem } from "@/types";
 
 async function stockResponse(status = 200) {
@@ -43,5 +43,19 @@ export async function POST(request: Request) {
   }
 
   await adjustStockItem(body.id, body.delta);
+  return stockResponse();
+}
+
+export async function DELETE(request: Request) {
+  const body = (await request.json()) as { color?: string };
+
+  if (!body.color?.trim()) {
+    return NextResponse.json(
+      { error: "El color es requerido." },
+      { status: 400, headers: jsonHeaders() }
+    );
+  }
+
+  await deleteStockColor(body.color);
   return stockResponse();
 }

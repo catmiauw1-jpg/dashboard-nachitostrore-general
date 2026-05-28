@@ -162,6 +162,29 @@ export async function adjustStockItem(itemId: string, delta: number): Promise<St
   return nextStock;
 }
 
+export async function deleteStockColor(color: string): Promise<StockItem[]> {
+  const supabase = createSupabaseAdminClient();
+  const cleanColor = color.trim();
+  if (!cleanColor) return readStockItems();
+
+  if (!supabase) return defaultBaseStock.filter((item) => normalize(item.color) !== normalize(cleanColor));
+
+  const currentStock = await readStockItems();
+  const matchingItems = currentStock.filter((item) => normalize(item.color) === normalize(cleanColor));
+  if (!matchingItems.length) return currentStock;
+
+  const { error } = await supabase
+    .from("base_garment_stock")
+    .delete()
+    .in("id", matchingItems.map((item) => item.id));
+
+  if (error) throw new Error(error.message);
+
+  const nextStock = await readStockItems();
+  await syncDesignedProductsSoldOut(nextStock);
+  return nextStock;
+}
+
 export async function adjustStockByColorSize(color: string, size: string, delta: number): Promise<boolean> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return false;
