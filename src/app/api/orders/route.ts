@@ -93,6 +93,32 @@ function safeItems(items: OrderLineItem[]): OrderLineItem[] {
   }));
 }
 
+function validateOrderForSales(order: Order) {
+  const items = order.items?.length
+    ? order.items
+    : [
+        {
+          productName: order.product,
+          color: order.color,
+          size: order.size,
+          quantity: order.prendas,
+          unitPrice: order.total,
+          lineTotal: order.total
+        }
+      ];
+  const totalQuantity = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1)), 0);
+
+  if (totalQuantity > 20) {
+    throw new RequestSecurityError("Puedes pedir maximo 20 prendas por pedido.", 400);
+  }
+
+  for (const item of items) {
+    if (!item.color || !item.size) {
+      throw new RequestSecurityError("Cada prenda debe tener color y talla.", 400);
+    }
+  }
+}
+
 function validReferenceFiles(formData: FormData) {
   const files = formData.getAll("references").filter((value): value is File => value instanceof File && value.size > 0);
 
@@ -256,6 +282,7 @@ export async function POST(request: Request) {
       order = orderFromJson(payload);
     }
 
+    validateOrderForSales(order);
     const orders = await createOrder(order);
     return NextResponse.json(orders, { status: 201, headers: secureJsonHeaders(request) });
   } catch (error) {
