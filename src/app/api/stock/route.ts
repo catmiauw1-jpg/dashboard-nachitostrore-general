@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonHeaders } from "@/lib/catalogStore";
 import { readCatalogProducts } from "@/lib/productRepository";
+import { RequestSecurityError, assertAllowedOrigin, secureJsonHeaders } from "@/lib/requestSecurity";
 import { adjustStockItem, deleteStockColor, readStockItems, upsertStockItem } from "@/lib/stockRepository";
 import type { StockItem } from "@/types";
 
@@ -19,43 +20,67 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const item = (await request.json()) as StockItem;
+  try {
+    assertAllowedOrigin(request);
 
-  if (!item.productId || !item.size || !item.color) {
-    return NextResponse.json(
-      { error: "Producto, talla y color son requeridos." },
-      { status: 400, headers: jsonHeaders() }
-    );
+    const item = (await request.json()) as StockItem;
+
+    if (!item.productId || !item.size || !item.color) {
+      return NextResponse.json(
+        { error: "Producto, talla y color son requeridos." },
+        { status: 400, headers: secureJsonHeaders(request) }
+      );
+    }
+
+    await upsertStockItem(item);
+    return stockResponse();
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 400;
+    const message = error instanceof Error ? error.message : "No se pudo guardar el stock.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
   }
-
-  await upsertStockItem(item);
-  return stockResponse();
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as { id: string; delta: number };
+  try {
+    assertAllowedOrigin(request);
 
-  if (!body.id || !Number.isFinite(body.delta)) {
-    return NextResponse.json(
-      { error: "La variante y el ajuste son requeridos." },
-      { status: 400, headers: jsonHeaders() }
-    );
+    const body = (await request.json()) as { id: string; delta: number };
+
+    if (!body.id || !Number.isFinite(body.delta)) {
+      return NextResponse.json(
+        { error: "La variante y el ajuste son requeridos." },
+        { status: 400, headers: secureJsonHeaders(request) }
+      );
+    }
+
+    await adjustStockItem(body.id, body.delta);
+    return stockResponse();
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 400;
+    const message = error instanceof Error ? error.message : "No se pudo actualizar el stock.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
   }
-
-  await adjustStockItem(body.id, body.delta);
-  return stockResponse();
 }
 
 export async function DELETE(request: Request) {
-  const body = (await request.json()) as { color?: string };
+  try {
+    assertAllowedOrigin(request);
 
-  if (!body.color?.trim()) {
-    return NextResponse.json(
-      { error: "El color es requerido." },
-      { status: 400, headers: jsonHeaders() }
-    );
+    const body = (await request.json()) as { color?: string };
+
+    if (!body.color?.trim()) {
+      return NextResponse.json(
+        { error: "El color es requerido." },
+        { status: 400, headers: secureJsonHeaders(request) }
+      );
+    }
+
+    await deleteStockColor(body.color);
+    return stockResponse();
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 400;
+    const message = error instanceof Error ? error.message : "No se pudo eliminar el color.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
   }
-
-  await deleteStockColor(body.color);
-  return stockResponse();
 }

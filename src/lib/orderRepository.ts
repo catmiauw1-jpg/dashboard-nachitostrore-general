@@ -1,4 +1,4 @@
-import { adjustStockByColorSize } from "@/lib/stockRepository";
+import { adjustStockByColorSize, reserveStockByColorSize } from "@/lib/stockRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import type {
   BotOrderStatus,
@@ -20,6 +20,7 @@ interface OrderNotesPayload {
   referenceImages?: string[];
   stockDeducted?: boolean;
   stockDeductedAt?: string;
+  stockRestoredAt?: string;
 }
 
 interface OrderRow {
@@ -67,7 +68,8 @@ function serializeNotes(order: Order) {
     quoteOption: order.quoteOption,
     referenceImages: order.referenceImages ?? [],
     stockDeducted: order.stockDeducted,
-    stockDeductedAt: order.stockDeductedAt
+    stockDeductedAt: order.stockDeductedAt,
+    stockRestoredAt: undefined
   });
 }
 
@@ -80,7 +82,8 @@ function serializeNotesPayload(notes: OrderNotesPayload) {
     quoteOption: notes.quoteOption,
     referenceImages: notes.referenceImages ?? [],
     stockDeducted: notes.stockDeducted,
-    stockDeductedAt: notes.stockDeductedAt
+    stockDeductedAt: notes.stockDeductedAt,
+    stockRestoredAt: notes.stockRestoredAt
   });
 }
 
@@ -245,6 +248,54 @@ async function deductOrderStock(order: Order) {
   }
 }
 
+function stockItemsForOrder(order: Order) {
+  const items = order.items?.length
+    ? order.items
+    : [
+        {
+          productName: order.product,
+          size: order.size,
+          color: order.color,
+          quantity: order.prendas,
+          unitPrice: 0,
+          lineTotal: 0
+        }
+      ];
+
+  return items
+    .filter((item) => item.color && item.size)
+    .map((item) => ({
+      color: item.color as string,
+      size: item.size as string,
+      quantity: Math.max(1, item.quantity || 1)
+    }));
+}
+
+async function reserveOrderStock(order: Order) {
+  const reserved: Array<{ color: string; size: string; quantity: number }> = [];
+
+  for (const item of stockItemsForOrder(order)) {
+    const ok = await reserveStockByColorSize(item.color, item.size, item.quantity);
+
+    if (!ok) {
+      await Promise.all(
+        reserved.map((reservedItem) => adjustStockByColorSize(reservedItem.color, reservedItem.size, reservedItem.quantity))
+      );
+      throw new Error(`Sin stock suficiente para ${item.color} talla ${item.size}.`);
+    }
+
+    reserved.push(item);
+  }
+
+  return reserved;
+}
+
+async function restoreOrderStock(order: Order) {
+  await Promise.all(
+    stockItemsForOrder(order).map((item) => adjustStockByColorSize(item.color, item.size, item.quantity))
+  );
+}
+
 export async function readOrders(): Promise<Order[]> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return [];
@@ -266,37 +317,48 @@ export async function createOrder(order: Order): Promise<Order[]> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return [order];
 
-  const items = orderItemsForInsert(order);
+  const reservedStock = await reserveOrderStock(order);
+  const orderToSave: Order = reservedStock.length
+    ? { ...order, stockDeducted: true, stockDeductedAt: new Date().toISOString() }
+    : order;
+  const items = orderItemsForInsert(orderToSave);
   const total = Math.max(
     0,
-    order.total || items.reduce((sum, item) => sum + Number(item.quantity ?? 0) * Number(item.unit_price ?? 0), 0)
+    orderToSave.total || items.reduce((sum, item) => sum + Number(item.quantity ?? 0) * Number(item.unit_price ?? 0), 0)
   );
 
   const { data: orderRow, error: orderError } = await supabase
     .from("orders")
     .insert({
-      order_number: cleanOrderNumber(order.id),
-      customer_name: order.customer,
-      customer_phone: order.customerPhone,
-      order_type: order.type,
-      payment_status: order.payment,
-      order_status: order.status,
-      sales_channel: order.channel,
-      delivery_method: order.delivery,
+      order_number: cleanOrderNumber(orderToSave.id),
+      customer_name: orderToSave.customer,
+      customer_phone: orderToSave.customerPhone,
+      order_type: orderToSave.type,
+      payment_status: orderToSave.payment,
+      order_status: orderToSave.status,
+      sales_channel: orderToSave.channel,
+      delivery_method: orderToSave.delivery,
       subtotal: total,
       total,
-      notes: serializeNotes(order)
+      notes: serializeNotes(orderToSave)
     })
     .select("id")
     .single();
 
-  if (orderError) throw new Error(orderError.message);
+  if (orderError) {
+    await restoreOrderStock(orderToSave);
+    throw new Error(orderError.message);
+  }
 
   const { error: itemError } = await supabase
     .from("order_items")
     .insert(items.map((item) => ({ ...item, order_id: orderRow.id })));
 
-  if (itemError) throw new Error(itemError.message);
+  if (itemError) {
+    await restoreOrderStock(orderToSave);
+    await supabase.from("orders").delete().eq("id", orderRow.id);
+    throw new Error(itemError.message);
+  }
 
   return readOrders();
 }
@@ -336,6 +398,13 @@ export async function updateOrder(orderId: string, updates: Partial<Order>): Pro
     await deductOrderStock(currentOrder);
     nextNotes.stockDeducted = true;
     nextNotes.stockDeductedAt = new Date().toISOString();
+    updatePayload.notes = serializeNotesPayload(nextNotes);
+  }
+
+  if (updates.status === "Cancelado" && currentNotes.stockDeducted) {
+    await restoreOrderStock(currentOrder);
+    nextNotes.stockDeducted = false;
+    nextNotes.stockRestoredAt = new Date().toISOString();
     updatePayload.notes = serializeNotesPayload(nextNotes);
   }
 

@@ -16,6 +16,8 @@ const catalogType = "Cat\u00e1logo" as const;
 const maxOrderBodyBytes = 12 * 1024 * 1024;
 const maxReferenceFiles = 5;
 const maxReferenceFileBytes = 5 * 1024 * 1024;
+const orderWindowMs = 2 * 60 * 60 * 1000;
+const orderWindowLimit = 5;
 const allowedReferenceTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 async function ensureReferenceBucket() {
@@ -238,12 +240,21 @@ export async function POST(request: Request) {
   try {
     assertAllowedOrigin(request);
     assertBodySize(request, maxOrderBodyBytes);
-    assertRateLimit(request);
 
     const contentType = request.headers.get("content-type") ?? "";
-    const order = contentType.includes("multipart/form-data")
-      ? await orderFromFormData(await request.formData())
-      : orderFromJson((await request.json()) as Order & Record<string, unknown>);
+    let order: Order;
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const type = valueOf(formData, "type") === catalogType ? "catalog" : "custom";
+      await assertRateLimit(request, { limit: orderWindowLimit, windowMs: orderWindowMs, scope: `orders:${type}` });
+      order = await orderFromFormData(formData);
+    } else {
+      const payload = (await request.json()) as Order & Record<string, unknown>;
+      const type = payload.type === catalogType ? "catalog" : "custom";
+      await assertRateLimit(request, { limit: orderWindowLimit, windowMs: orderWindowMs, scope: `orders:${type}` });
+      order = orderFromJson(payload);
+    }
 
     const orders = await createOrder(order);
     return NextResponse.json(orders, { status: 201, headers: secureJsonHeaders(request) });
@@ -255,8 +266,16 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const body = (await request.json()) as { id: string; updates: Partial<Order> };
-  const orders = await updateOrder(body.id, body.updates);
+  try {
+    assertAllowedOrigin(request);
 
-  return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
+    const body = (await request.json()) as { id: string; updates: Partial<Order> };
+    const orders = await updateOrder(body.id, body.updates);
+
+    return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 400;
+    const message = error instanceof Error ? error.message : "No se pudo actualizar el pedido.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
+  }
 }

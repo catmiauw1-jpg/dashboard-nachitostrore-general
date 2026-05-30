@@ -189,10 +189,45 @@ export async function adjustStockByColorSize(color: string, size: string, delta:
   const supabase = createSupabaseAdminClient();
   if (!supabase) return false;
 
+  const { data: adjusted, error: rpcError } = await supabase.rpc("adjust_base_garment_stock", {
+    p_color: color,
+    p_size: size,
+    p_delta: Math.round(delta)
+  });
+
+  if (!rpcError) {
+    await syncDesignedProductsSoldOut(await readStockItems());
+    return Boolean(adjusted);
+  }
+
   const stock = await readStockItems();
   const matchingItem = stock.find((item) => normalize(item.color) === normalize(color) && normalize(item.size) === normalize(size));
   if (!matchingItem) return false;
 
   await adjustStockItem(matchingItem.id, delta);
+  return true;
+}
+
+export async function reserveStockByColorSize(color: string, size: string, quantity: number): Promise<boolean> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return true;
+
+  const safeQuantity = Math.max(1, Math.round(quantity || 1));
+  const { data: reserved, error: rpcError } = await supabase.rpc("reserve_base_garment_stock", {
+    p_color: color,
+    p_size: size,
+    p_quantity: safeQuantity
+  });
+
+  if (!rpcError) {
+    await syncDesignedProductsSoldOut(await readStockItems());
+    return Boolean(reserved);
+  }
+
+  const stock = await readStockItems();
+  const matchingItem = stock.find((item) => normalize(item.color) === normalize(color) && normalize(item.size) === normalize(size));
+  if (!matchingItem || matchingItem.available < safeQuantity) return false;
+
+  await adjustStockItem(matchingItem.id, -safeQuantity);
   return true;
 }
