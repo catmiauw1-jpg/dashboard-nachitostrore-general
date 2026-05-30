@@ -14,7 +14,6 @@ interface ProductsSectionProps {
 
 const defaultSizes = "S, M, L, XL";
 const defaultColors = "Blanco, Negro";
-const customCategoryValue = "__custom__";
 const baseWebCategories = [
   { value: "anime", label: "Anime" },
   { value: "basket", label: "Basket" },
@@ -56,7 +55,6 @@ export function ProductsSection({
   const [name, setName] = useState("");
   const [category, setCategory] = useState<Product["category"]>("Oversize");
   const [webCategory, setWebCategory] = useState("catalogo");
-  const [customWebCategory, setCustomWebCategory] = useState("");
   const [description, setDescription] = useState("");
   const [basePrice, setBasePrice] = useState(150);
   const [colors, setColors] = useState(defaultColors);
@@ -84,7 +82,6 @@ export function ProductsSection({
     setName("");
     setCategory("Oversize");
     setWebCategory("catalogo");
-    setCustomWebCategory("");
     setDescription("");
     setBasePrice(150);
     setColors(defaultColors);
@@ -149,8 +146,7 @@ export function ProductsSection({
     if (!cleanName) return;
     setFormError("");
 
-    const cleanWebCategory =
-      webCategory === customCategoryValue ? normalizeWebCategory(customWebCategory) : normalizeWebCategory(webCategory);
+    const cleanWebCategory = normalizeWebCategory(webCategory);
 
     if (!cleanWebCategory) {
       setFormError("Escoge una categorÃ­a web o escribe una nueva.");
@@ -199,7 +195,6 @@ export function ProductsSection({
     setName(product.name);
     setCategory(product.category);
     setWebCategory(product.webCategory ?? "catalogo");
-    setCustomWebCategory("");
     setDescription(product.description ?? "");
     setBasePrice(product.basePrice);
     setColors(product.colors.join(", "));
@@ -271,14 +266,19 @@ export function ProductsSection({
 
               <label className="field">
                 <span>Categoría web</span>
-                <select value={webCategory} onChange={(event) => setWebCategory(event.target.value)}>
+                <input
+                  list="web-category-options"
+                  placeholder="Ej: anime, basket, videojuegos..."
+                  value={webCategory}
+                  onChange={(event) => setWebCategory(event.target.value)}
+                />
+                <datalist id="web-category-options">
                   {webCategoryOptions.map((item) => (
                     <option key={item.value} value={item.value}>
                       {item.label}
                     </option>
                   ))}
-                  <option value={customCategoryValue}>Nueva categorÃ­a...</option>
-                </select>
+                </datalist>
               </label>
 
               <label className="field">
@@ -296,17 +296,6 @@ export function ProductsSection({
                 <input value={sizes} onChange={(event) => setSizes(event.target.value)} />
               </label>
             </div>
-
-            {webCategory === customCategoryValue ? (
-              <label className="field wide-field">
-                <span>Nueva categorÃ­a web</span>
-                <input
-                  placeholder="Ej: Videojuegos, mÃºsica, autos..."
-                  value={customWebCategory}
-                  onChange={(event) => setCustomWebCategory(event.target.value)}
-                />
-              </label>
-            ) : null}
 
             <label className="field wide-field">
               <span>Colores</span>
