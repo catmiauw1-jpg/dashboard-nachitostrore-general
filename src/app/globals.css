@@ -2746,6 +2746,17 @@ body.dark .field select option {
   box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
+.form-error {
+  margin: 0;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .image-preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

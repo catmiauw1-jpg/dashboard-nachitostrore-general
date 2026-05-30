@@ -18,10 +18,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const product = (await request.json()) as Product;
-  await createCatalogProduct(product);
+  try {
+    const product = (await request.json()) as Product;
+    await createCatalogProduct(product);
 
-  return NextResponse.json(product, { status: 201, headers: jsonHeaders() });
+    return NextResponse.json(product, { status: 201, headers: jsonHeaders() });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "No se pudo crear el producto" },
+      { status: 500, headers: jsonHeaders() }
+    );
+  }
 }
 
 export async function PATCH(request: Request) {

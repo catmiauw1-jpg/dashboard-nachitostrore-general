@@ -14,7 +14,8 @@ interface ProductsSectionProps {
 
 const defaultSizes = "S, M, L, XL";
 const defaultColors = "Blanco, Negro";
-const webCategories = [
+const customCategoryValue = "__custom__";
+const baseWebCategories = [
   { value: "anime", label: "Anime" },
   { value: "basket", label: "Basket" },
   { value: "streetwear", label: "Streetwear" },
@@ -24,6 +25,24 @@ const webCategories = [
   { value: "futbol", label: "Fútbol" },
   { value: "catalogo", label: "Catálogo" }
 ];
+
+function normalizeWebCategory(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function formatWebCategory(value: string) {
+  return value
+    .split("-")
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
 
 export function ProductsSection({
   products,
@@ -37,6 +56,7 @@ export function ProductsSection({
   const [name, setName] = useState("");
   const [category, setCategory] = useState<Product["category"]>("Oversize");
   const [webCategory, setWebCategory] = useState("catalogo");
+  const [customWebCategory, setCustomWebCategory] = useState("");
   const [description, setDescription] = useState("");
   const [basePrice, setBasePrice] = useState(150);
   const [colors, setColors] = useState(defaultColors);
@@ -45,13 +65,26 @@ export function ProductsSection({
   const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
   const [currentImageUrls, setCurrentImageUrls] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const imagePreviews = [...currentImageUrls, ...newImagePreviews];
+  const webCategoryOptions = [
+    ...new Map(
+      [
+        ...baseWebCategories,
+        ...products
+          .map((product) => normalizeWebCategory(product.webCategory ?? ""))
+          .filter(Boolean)
+          .map((value) => ({ value, label: formatWebCategory(value) }))
+      ].map((item) => [item.value, item])
+    ).values()
+  ];
 
   const resetForm = () => {
     setEditingProductId(null);
     setName("");
     setCategory("Oversize");
     setWebCategory("catalogo");
+    setCustomWebCategory("");
     setDescription("");
     setBasePrice(150);
     setColors(defaultColors);
@@ -59,6 +92,7 @@ export function ProductsSection({
     setImageFiles([]);
     setNewImagePreviews([]);
     setCurrentImageUrls([]);
+    setFormError("");
   };
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -95,7 +129,10 @@ export function ProductsSection({
           body: formData
         });
 
-        if (!response.ok) throw new Error("No se pudo subir una imagen");
+        if (!response.ok) {
+          const data = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(data?.error || "No se pudo subir una imagen");
+        }
 
         const data = (await response.json()) as { imageUrl: string };
         return data.imageUrl;
@@ -110,6 +147,15 @@ export function ProductsSection({
 
     const cleanName = name.trim();
     if (!cleanName) return;
+    setFormError("");
+
+    const cleanWebCategory =
+      webCategory === customCategoryValue ? normalizeWebCategory(customWebCategory) : normalizeWebCategory(webCategory);
+
+    if (!cleanWebCategory) {
+      setFormError("Escoge una categorÃ­a web o escribe una nueva.");
+      return;
+    }
 
     setIsSaving(true);
 
@@ -119,7 +165,7 @@ export function ProductsSection({
         id: editingProductId ?? `prod-${Date.now()}`,
         name: cleanName,
         category,
-        webCategory,
+        webCategory: cleanWebCategory,
         description: description.trim(),
         basePrice: Math.max(0, basePrice),
         colors: colors
@@ -141,6 +187,8 @@ export function ProductsSection({
       }
 
       resetForm();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "No se pudo guardar el producto.");
     } finally {
       setIsSaving(false);
     }
@@ -151,6 +199,7 @@ export function ProductsSection({
     setName(product.name);
     setCategory(product.category);
     setWebCategory(product.webCategory ?? "catalogo");
+    setCustomWebCategory("");
     setDescription(product.description ?? "");
     setBasePrice(product.basePrice);
     setColors(product.colors.join(", "));
@@ -223,11 +272,12 @@ export function ProductsSection({
               <label className="field">
                 <span>Categoría web</span>
                 <select value={webCategory} onChange={(event) => setWebCategory(event.target.value)}>
-                  {webCategories.map((item) => (
+                  {webCategoryOptions.map((item) => (
                     <option key={item.value} value={item.value}>
                       {item.label}
                     </option>
                   ))}
+                  <option value={customCategoryValue}>Nueva categorÃ­a...</option>
                 </select>
               </label>
 
@@ -246,6 +296,17 @@ export function ProductsSection({
                 <input value={sizes} onChange={(event) => setSizes(event.target.value)} />
               </label>
             </div>
+
+            {webCategory === customCategoryValue ? (
+              <label className="field wide-field">
+                <span>Nueva categorÃ­a web</span>
+                <input
+                  placeholder="Ej: Videojuegos, mÃºsica, autos..."
+                  value={customWebCategory}
+                  onChange={(event) => setCustomWebCategory(event.target.value)}
+                />
+              </label>
+            ) : null}
 
             <label className="field wide-field">
               <span>Colores</span>
@@ -269,6 +330,8 @@ export function ProductsSection({
                 ))}
               </div>
             ) : null}
+
+            {formError ? <p className="form-error">{formError}</p> : null}
 
             <div className="form-actions-row">
               {editingProductId ? (

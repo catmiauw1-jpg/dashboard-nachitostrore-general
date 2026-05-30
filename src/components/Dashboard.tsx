@@ -354,8 +354,6 @@ export function Dashboard() {
   };
 
   const handleAddProduct = async (product: Product) => {
-    setProductList((currentProducts) => [product, ...currentProducts]);
-
     try {
       const response = await fetch("/api/products", {
         method: "POST",
@@ -363,10 +361,18 @@ export function Dashboard() {
         body: JSON.stringify(product)
       });
 
-      if (!response.ok) throw new Error("No se pudo guardar");
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || "No se pudo guardar");
+      }
+
+      const savedProduct = (await response.json()) as Product;
+      setProductList((currentProducts) => [savedProduct, ...currentProducts.filter((item) => item.id !== savedProduct.id)]);
       showToast(`Producto "${product.name}" agregado y publicado en el catálogo.`);
-    } catch {
-      showToast(`Producto "${product.name}" agregado solo en esta sesión.`);
+      await refreshBusinessData({ notifyNewOrders: false });
+    } catch (error) {
+      showToast(`No se pudo agregar "${product.name}".`);
+      throw error;
     }
   };
 

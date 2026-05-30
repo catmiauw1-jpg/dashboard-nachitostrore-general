@@ -5,6 +5,7 @@ import { jsonHeaders } from "@/lib/catalogStore";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const productImagesBucket = "product-images";
 
 function safeFileName(name: string) {
   const extension = path.extname(name).toLowerCase() || ".png";
@@ -44,10 +45,19 @@ export async function POST(request: Request) {
 
   if (supabase) {
     const storagePath = `products/${fileName}`;
-    const { error } = await supabase.storage.from("product-images").upload(storagePath, bytes, {
+    let { error } = await supabase.storage.from(productImagesBucket).upload(storagePath, bytes, {
       contentType: file.type,
       upsert: true
     });
+
+    if (error && /bucket|not found|does not exist/i.test(error.message)) {
+      await supabase.storage.createBucket(productImagesBucket, { public: true });
+      const retry = await supabase.storage.from(productImagesBucket).upload(storagePath, bytes, {
+        contentType: file.type,
+        upsert: true
+      });
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json(
@@ -56,7 +66,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data } = supabase.storage.from("product-images").getPublicUrl(storagePath);
+    const { data } = supabase.storage.from(productImagesBucket).getPublicUrl(storagePath);
     return NextResponse.json({ imageUrl: data.publicUrl }, { headers: jsonHeaders() });
   }
 
