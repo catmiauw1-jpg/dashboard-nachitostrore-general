@@ -7,7 +7,7 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
-  const publicProducts = await readPublicCatalogProducts({ includeHidden: true });
+  const publicProducts = await readPublicCatalogProducts();
 
   return NextResponse.json(publicProducts, { headers: jsonHeaders() });
 }

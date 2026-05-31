@@ -1,5 +1,6 @@
 import { adjustStockByColorSize, reserveStockByColorSize } from "@/lib/stockRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { upsertCustomerFromOrder } from "@/lib/customerRepository";
 import type {
   BotOrderStatus,
   Order,
@@ -326,11 +327,13 @@ export async function createOrder(order: Order): Promise<Order[]> {
     0,
     orderToSave.total || items.reduce((sum, item) => sum + Number(item.quantity ?? 0) * Number(item.unit_price ?? 0), 0)
   );
+  const customerId = await upsertCustomerFromOrder(orderToSave);
 
   const { data: orderRow, error: orderError } = await supabase
     .from("orders")
     .insert({
       order_number: cleanOrderNumber(orderToSave.id),
+      customer_id: customerId,
       customer_name: orderToSave.customer,
       customer_phone: orderToSave.customerPhone,
       order_type: orderToSave.type,

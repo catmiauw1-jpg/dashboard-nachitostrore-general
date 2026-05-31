@@ -22,7 +22,7 @@ import {
   stockData
 } from "@/data/mockData";
 import { sectionDefinitions } from "@/data/sectionDefinitions";
-import type { ChartData, ChartPoint, Conversation, Expense, Metric, MonthKey, Order, Product, SectionKey, StockItem } from "@/types";
+import type { ChartData, ChartPoint, Conversation, Customer, Expense, Metric, MonthKey, Order, Product, SectionKey, StockItem } from "@/types";
 
 interface DashboardProps {
   accessToken: string;
@@ -168,8 +168,14 @@ function buildLiveMetrics(ordersToSummarize: Order[], expensesToSummarize: Expen
   ];
 }
 
-function customersFromOrders(orders: Order[]) {
-  const customersByKey = new Map<string, { id: string; name: string; phone: string; channel: Order["channel"] }>();
+function customersFromOrders(orders: Order[], persistedCustomers: Customer[] = []) {
+  const customersByKey = new Map<string, Customer>();
+
+  persistedCustomers.forEach((customer) => {
+    const key = customer.phone?.trim() || customer.id;
+    if (!key) return;
+    customersByKey.set(key, customer);
+  });
 
   orders.forEach((order) => {
     const key = order.customerPhone?.trim() || order.customer.trim().toLowerCase();
@@ -191,6 +197,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   const [isDark, setIsDark] = useState(true);
   const [chats, setChats] = useState<Conversation[]>(initialChats);
   const [orderList, setOrderList] = useState<Order[]>([]);
+  const [customerList, setCustomerList] = useState<Customer[]>([]);
   const [expenseList, setExpenseList] = useState<Expense[]>([]);
   const [productList, setProductList] = useState<Product[]>(products);
   const [stockList, setStockList] = useState<StockItem[]>(stockData);
@@ -223,10 +230,11 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
   const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
     try {
-      const [productsResponse, stockResponse, ordersResponse, expensesResponse] = await Promise.all([
+      const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse] = await Promise.all([
         apiFetch("/api/products", { cache: "no-store" }),
         apiFetch("/api/stock", { cache: "no-store" }),
         apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
+        apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }),
         apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" })
       ]);
 
@@ -257,6 +265,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
         hasLoadedOrdersRef.current = true;
       }
 
+      if (customersResponse.ok) {
+        setCustomerList((await customersResponse.json()) as Customer[]);
+      }
+
       if (expensesResponse.ok) {
         setExpenseList((await expensesResponse.json()) as Expense[]);
       }
@@ -274,10 +286,11 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   useEffect(() => {
     async function loadProducts() {
       try {
-        const [productsResponse, stockResponse, ordersResponse, expensesResponse] = await Promise.all([
+        const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse] = await Promise.all([
           apiFetch("/api/products", { cache: "no-store" }),
           apiFetch("/api/stock", { cache: "no-store" }),
           apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
+          apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }),
           apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" })
         ]);
 
@@ -297,6 +310,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
           setOrderList(nextOrders);
           orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
           hasLoadedOrdersRef.current = true;
+        }
+
+        if (customersResponse.ok) {
+          setCustomerList((await customersResponse.json()) as Customer[]);
         }
 
         if (expensesResponse.ok) {
@@ -603,6 +620,24 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     }
   };
 
+  const handleUpdateCustomerNote = async (customerId: string, notes: string) => {
+    setCustomerList((currentCustomers) =>
+      currentCustomers.map((customer) => (customer.id === customerId ? { ...customer, notes } : customer))
+    );
+
+    const response = await apiFetch("/api/customers", {
+      method: "PATCH",
+      headers: jsonAuthHeaders,
+      body: JSON.stringify({ id: customerId, notes })
+    });
+
+    if (!response.ok) {
+      throw new Error("No se pudo guardar la nota del cliente.");
+    }
+
+    setCustomerList((await response.json()) as Customer[]);
+  };
+
   const handleSectionPrimaryAction = () => {
     if (activeSection === "pedidos") {
       setIsOrderModalOpen(true);
@@ -621,7 +656,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
     return buildLiveMetrics(countedOrders, expenseList);
   }, [expenseList, orderList]);
-  const customerOptions = useMemo(() => customersFromOrders(orderList), [orderList]);
+  const customerOptions = useMemo(() => customersFromOrders(orderList, customerList), [customerList, orderList]);
   const liveChartData = useMemo(() => {
     const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
     return buildLiveChartData(countedOrders);
@@ -686,7 +721,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     }
 
     if (activeSection === "clientes") {
-      return <CustomersSection orders={orderList} />;
+      return <CustomersSection customers={customerList} orders={orderList} onUpdateCustomerNote={handleUpdateCustomerNote} />;
     }
 
     if (activeSection === "gastos") {

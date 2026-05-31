@@ -104,6 +104,12 @@ export interface Customer {
   name: string;
   phone: string;
   channel: SalesChannel;
+  notes?: string;
+  address?: string;
+  preferredSize?: string;
+  preferredColor?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Product {

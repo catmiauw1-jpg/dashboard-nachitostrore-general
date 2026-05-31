@@ -143,19 +143,27 @@ export async function adjustStockItem(itemId: string, delta: number): Promise<St
 
   const { data: current, error: readError } = await supabase
     .from("base_garment_stock")
-    .select("id, stock_quantity")
+    .select("id, color, size, stock_quantity")
     .eq("id", itemId)
     .single();
 
   if (readError) throw new Error(readError.message);
 
-  const nextQuantity = Math.max(0, Number(current.stock_quantity ?? 0) + delta);
-  const { error: updateError } = await supabase
-    .from("base_garment_stock")
-    .update({ stock_quantity: nextQuantity })
-    .eq("id", itemId);
+  const { error: rpcError } = await supabase.rpc("adjust_base_garment_stock", {
+    p_color: current.color,
+    p_size: current.size,
+    p_delta: Math.round(delta)
+  });
 
-  if (updateError) throw new Error(updateError.message);
+  if (rpcError) {
+    const nextQuantity = Math.max(0, Number(current.stock_quantity ?? 0) + delta);
+    const { error: updateError } = await supabase
+      .from("base_garment_stock")
+      .update({ stock_quantity: nextQuantity })
+      .eq("id", itemId);
+
+    if (updateError) throw new Error(updateError.message);
+  }
 
   const nextStock = await readStockItems();
   await syncDesignedProductsSoldOut(nextStock);

@@ -2,16 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
-import type { Order, OrderLineItem } from "@/types";
+import type { Customer, Order, OrderLineItem } from "@/types";
 
 interface CustomersSectionProps {
+  customers: Customer[];
   orders: Order[];
+  onUpdateCustomerNote: (customerId: string, notes: string) => Promise<void>;
 }
 
 interface CustomerProfile {
   key: string;
+  customerId?: string;
   name: string;
   phone?: string;
+  persistedNote?: string;
   registeredAt?: string;
   fromNachitoStore: boolean;
   channels: string[];
@@ -93,15 +97,21 @@ function orderItems(order: Order): OrderLineItem[] {
   ];
 }
 
-function buildCustomerProfiles(orders: Order[]): CustomerProfile[] {
+function buildCustomerProfiles(orders: Order[], persistedCustomers: Customer[]): CustomerProfile[] {
   const groups = new Map<string, Order[]>();
+  const persistedByPhone = new Map<string, Customer>();
+
+  persistedCustomers.forEach((customer) => {
+    const phone = normalizePhone(customer.phone);
+    if (phone) persistedByPhone.set(phone, customer);
+  });
 
   orders.forEach((order) => {
     const key = customerKey(order);
     groups.set(key, [...(groups.get(key) ?? []), order]);
   });
 
-  return [...groups.entries()]
+  const profiles: CustomerProfile[] = [...groups.entries()]
     .map(([key, customerOrders]) => {
       const sortedOrders = [...customerOrders].sort((a, b) => {
         const first = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -114,14 +124,17 @@ function buildCustomerProfiles(orders: Order[]): CustomerProfile[] {
       const canceledOrders = sortedOrders.filter((order) => order.status === "Cancelado");
       const oldestOrder = sortedOrders[sortedOrders.length - 1];
       const items = sortedOrders.flatMap(orderItems);
+      const persistedCustomer = persistedByPhone.get(normalizePhone(sortedOrders.find((order) => normalizePhone(order.customerPhone))?.customerPhone));
 
       return {
         key,
+        customerId: persistedCustomer?.id,
         name: sortedOrders.find((order) => !isGenericCustomerName(order.customer))?.customer ?? sortedOrders[0]?.customer ?? "Cliente sin nombre",
-        phone: sortedOrders.find((order) => normalizePhone(order.customerPhone))?.customerPhone,
+        phone: persistedCustomer?.phone ?? sortedOrders.find((order) => normalizePhone(order.customerPhone))?.customerPhone,
+        persistedNote: persistedCustomer?.notes,
         registeredAt: oldestOrder?.createdAt,
         fromNachitoStore: sortedOrders.some(isNachitoStoreOrder),
-        channels: [...new Set(sortedOrders.map((order) => order.channel))],
+        channels: [...new Set([persistedCustomer?.channel, ...sortedOrders.map((order) => order.channel)].filter(Boolean) as string[])],
         orders: sortedOrders,
         activeOrders,
         completedOrders,
@@ -134,21 +147,50 @@ function buildCustomerProfiles(orders: Order[]): CustomerProfile[] {
         preferredType: mostCommon(sortedOrders.map((order) => order.type), "Sin preferencia"),
         favoriteProduct: mostCommon(items.map((item) => item.productName), "Sin producto frecuente")
       };
-    })
-    .sort((a, b) => {
+    });
+
+  const profileKeys = new Set(profiles.map((profile) => profile.key));
+  persistedCustomers.forEach((customer) => {
+    const phone = normalizePhone(customer.phone);
+    const key = phone ? `phone:${phone}` : `customer:${customer.id}`;
+    if (profileKeys.has(key)) return;
+
+    profiles.push({
+      key,
+      customerId: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      persistedNote: customer.notes,
+      registeredAt: customer.createdAt,
+      fromNachitoStore: customer.channel === "Web",
+      channels: [customer.channel],
+      orders: [],
+      activeOrders: [],
+      completedOrders: [],
+      canceledOrders: [],
+      totalSpent: 0,
+      totalGarments: 0,
+      favoriteSize: customer.preferredSize ?? "Por confirmar",
+      favoriteColor: customer.preferredColor ?? "Por confirmar",
+      preferredType: "Sin pedidos todavía",
+      favoriteProduct: "Sin producto frecuente"
+    });
+  });
+
+  return profiles.sort((a, b) => {
       const first = a.lastOrder?.createdAt ? new Date(a.lastOrder.createdAt).getTime() : 0;
       const second = b.lastOrder?.createdAt ? new Date(b.lastOrder.createdAt).getTime() : 0;
       return second - first;
     });
 }
 
-export function CustomersSection({ orders }: CustomersSectionProps) {
+export function CustomersSection({ customers: persistedCustomers, orders, onUpdateCustomerNote }: CustomersSectionProps) {
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(null);
   const [customerNotes, setCustomerNotes] = useState<Record<string, string>>({});
 
-  const customers = useMemo(() => buildCustomerProfiles(orders), [orders]);
+  const customers = useMemo(() => buildCustomerProfiles(orders, persistedCustomers), [orders, persistedCustomers]);
 
   useEffect(() => {
     try {
@@ -159,9 +201,30 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
     }
   }, []);
 
-  const saveCustomerNote = (customerKeyValue: string, note: string) => {
+  useEffect(() => {
     setCustomerNotes((currentNotes) => {
-      const nextNotes = { ...currentNotes, [customerKeyValue]: note };
+      const nextNotes = { ...currentNotes };
+      customers.forEach((customer) => {
+        if (customer.persistedNote !== undefined && nextNotes[customer.key] === undefined) {
+          nextNotes[customer.key] = customer.persistedNote;
+        }
+      });
+      return nextNotes;
+    });
+  }, [customers]);
+
+  const updateCustomerNoteDraft = (customerKeyValue: string, note: string) => {
+    setCustomerNotes((currentNotes) => ({ ...currentNotes, [customerKeyValue]: note }));
+  };
+
+  const saveCustomerNote = async (customer: CustomerProfile, note: string) => {
+    if (customer.customerId) {
+      await onUpdateCustomerNote(customer.customerId, note);
+      return;
+    }
+
+    setCustomerNotes((currentNotes) => {
+      const nextNotes = { ...currentNotes, [customer.key]: note };
       window.localStorage.setItem("poleraflow-customer-notes", JSON.stringify(nextNotes));
       return nextNotes;
     });
@@ -206,7 +269,7 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
   const activeCustomers = customers.filter((customer) => customer.activeOrders.length > 0).length;
   const webCustomers = customers.filter((customer) => customer.fromNachitoStore).length;
   const totalRevenue = customers.reduce((sum, customer) => sum + customer.totalSpent, 0);
-  const selectedCustomerNote = selectedCustomer ? customerNotes[selectedCustomer.key] ?? "" : "";
+  const selectedCustomerNote = selectedCustomer ? customerNotes[selectedCustomer.key] ?? selectedCustomer.persistedNote ?? "" : "";
   const whatsappLink = selectedCustomer?.phone
     ? `https://wa.me/${normalizePhone(selectedCustomer.phone).replace(/^\+/, "")}`
     : "";
@@ -385,7 +448,8 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
                 </div>
                 <textarea
                   className="customer-note-field"
-                  onChange={(event) => saveCustomerNote(selectedCustomer.key, event.target.value)}
+                  onBlur={(event) => void saveCustomerNote(selectedCustomer, event.target.value)}
+                  onChange={(event) => updateCustomerNoteDraft(selectedCustomer.key, event.target.value)}
                   placeholder="Ej: le gusta oversize negro, paga por QR, prefiere recoger..."
                   value={selectedCustomerNote}
                 />
