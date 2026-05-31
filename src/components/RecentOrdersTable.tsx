@@ -40,52 +40,59 @@ export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
         />
       </div>
 
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Cliente</th>
-              <th>Producto</th>
-              <th>Prendas</th>
-              <th>Pago</th>
-              <th>Estado</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredOrders.map((order) => (
-              <tr key={order.id}>
-                <td>
-                  <strong>{order.id}</strong>
-                  <small>{order.channel}</small>
-                </td>
-                <td>
-                  <strong>{order.customer}</strong>
-                  <small>{order.type}</small>
-                </td>
-                <td>
-                  <strong>{order.product}</strong>
-                  <small>Pedido {order.type.toLowerCase()}</small>
-                </td>
-                <td>
-                  <strong>{order.prendas}</strong>
-                  <small>{order.prendas === 1 ? "prenda" : "prendas"}</small>
-                </td>
-                <td>
-                  <span className={`badge ${badgeClass(order.payment)}`}>{order.payment}</span>
-                </td>
-                <td>
-                  <span className={`badge ${badgeClass(order.status)}`}>{order.status}</span>
-                </td>
-                <td>
-                  <strong>{formatCurrency(order.total)}</strong>
-                </td>
+      {filteredOrders.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>Producto</th>
+                <th>Prendas</th>
+                <th>Pago</th>
+                <th>Estado</th>
+                <th>Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filteredOrders.map((order) => (
+                <tr key={order.id}>
+                  <td>
+                    <strong>{order.id}</strong>
+                    <small>{order.channel}</small>
+                  </td>
+                  <td>
+                    <strong>{order.customer}</strong>
+                    <small>{order.type}</small>
+                  </td>
+                  <td>
+                    <strong>{order.product}</strong>
+                    <small>Pedido {order.type.toLowerCase()}</small>
+                  </td>
+                  <td>
+                    <strong>{order.prendas}</strong>
+                    <small>{order.prendas === 1 ? "prenda" : "prendas"}</small>
+                  </td>
+                  <td>
+                    <span className={`badge ${badgeClass(order.payment)}`}>{order.payment}</span>
+                  </td>
+                  <td>
+                    <span className={`badge ${badgeClass(order.status)}`}>{order.status}</span>
+                  </td>
+                  <td>
+                    <strong>{formatCurrency(order.total)}</strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state order-empty-state">
+          <strong>Sin pedidos activos</strong>
+          <p>Los pedidos nuevos de Nachito Store apareceran aqui para seguimiento rapido.</p>
+        </div>
+      )}
     </article>
   );
 }

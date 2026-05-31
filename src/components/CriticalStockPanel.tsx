@@ -7,19 +7,24 @@ interface CriticalStockPanelProps {
 
 export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
   const lowStock = stock.filter((item) => item.available <= item.min).length;
+  const orderedStock = [...stock].sort((first, second) => {
+    const firstCritical = first.available <= first.min ? 0 : 1;
+    const secondCritical = second.available <= second.min ? 0 : 1;
+    return firstCritical - secondCritical || first.available - second.available;
+  });
 
   return (
     <article className="panel">
       <div className="panel-header">
         <div>
-          <h3>Stock crítico</h3>
-          <p>Prendas que están por debajo del mínimo recomendado.</p>
+          <h3>Estado de stock</h3>
+          <p>Prendas base disponibles para producir pedidos.</p>
         </div>
-        <span className="badge danger">{lowStock} bajos</span>
+        <span className={`badge ${lowStock ? "danger" : "success"}`}>{lowStock} bajos</span>
       </div>
 
       <div className="stock-list">
-        {stock.map((item) => {
+        {orderedStock.map((item) => {
           const status = item.available <= item.min ? "Bajo" : "OK";
 
           return (
@@ -27,7 +32,7 @@ export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
               <div>
                 <h4>{displayStockName(item.item)}</h4>
                 <p>
-                  Mínimo sugerido: {item.min} · Disponible: {item.available}
+                  Minimo sugerido: {item.min} - Disponible: {item.available}
                 </p>
               </div>
               <div className="stock-meta">
