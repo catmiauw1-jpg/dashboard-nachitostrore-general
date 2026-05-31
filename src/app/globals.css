@@ -997,6 +997,30 @@ body.dark .btn.primary {
   margin-top: 18px;
 }
 
+.section-workspace > .order-history-panel {
+  display: none;
+}
+
+.history-workspace > .order-history-panel,
+.history-layout .order-history-panel {
+  display: grid;
+}
+
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.9fr) minmax(460px, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.history-tabs {
+  margin-bottom: 14px;
+}
+
+.history-detail-panel {
+  margin-top: 18px;
+}
+
 .order-history-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1046,6 +1070,12 @@ body.dark .btn.primary {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--surface-soft) 78%, var(--accent) 22%);
   transform: translateY(-1px);
+}
+
+.history-order-card.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--accent) 22%);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .history-order-card.canceled:hover {
@@ -1125,6 +1155,20 @@ body.dark .btn.primary {
   color: var(--text);
   font: inherit;
   outline: none;
+}
+
+.expense-form select option {
+  background: var(--surface-solid);
+  color: var(--text);
+}
+
+body.dark .expense-form input,
+body.dark .expense-form select,
+body.dark .expense-form textarea,
+body.dark .expense-form select option {
+  background: #101624;
+  color: #f8fafc;
+  color-scheme: dark;
 }
 
 .expense-form textarea {
@@ -3128,6 +3172,10 @@ body.dark .field select option {
 
   .orders-layout,
   .production-order-card {
+    grid-template-columns: 1fr;
+  }
+
+  .history-layout {
     grid-template-columns: 1fr;
   }
 

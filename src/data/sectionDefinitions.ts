@@ -72,6 +72,45 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
     nextStep: "Crear el modal Registrar pedido con catálogo, cliente, pago y entrega.",
     futureConnection: "Luego este módulo recibirá pedidos desde webhooks de n8n y desde la página web."
   },
+  historial: {
+    kicker: "Archivo",
+    title: "Historial",
+    description: "Revisa pedidos entregados y cancelados fuera de la cola de preparaciÃ³n.",
+    primaryAction: "Ver pedidos",
+    summary: [
+      { label: "Entregados", value: "0", detail: "Pedidos completados" },
+      { label: "Cancelados", value: "0", detail: "Se limpian cada 24 horas" },
+      { label: "Archivo", value: "Activo", detail: "Separado de pedidos" }
+    ],
+    mainPanel: {
+      title: "Pedidos cerrados",
+      description: "Historial separado para no mezclar producciÃ³n activa con pedidos finalizados.",
+      badge: "Historial",
+      badgeTone: "info",
+      items: [
+        {
+          title: "Entregados",
+          description: "Pedidos que ya se cerraron correctamente.",
+          status: "Activo",
+          tone: "success"
+        },
+        {
+          title: "Cancelados",
+          description: "Pedidos cancelados antes de completar la entrega.",
+          status: "Activo",
+          tone: "danger"
+        },
+        {
+          title: "Detalle",
+          description: "Cada registro conserva prendas, total, fecha y cliente.",
+          status: "Listo",
+          tone: "accent"
+        }
+      ]
+    },
+    nextStep: "Usar esta secciÃ³n para auditorÃ­a y revisiÃ³n de ventas cerradas.",
+    futureConnection: "Luego se podrÃ¡ exportar a Excel o conectar reportes mensuales."
+  },
   productos: {
     kicker: "Catálogo",
     title: "Productos",

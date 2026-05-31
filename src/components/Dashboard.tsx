@@ -6,6 +6,7 @@ import { OrderFormModal } from "@/components/OrderFormModal";
 import { CustomersSection } from "@/components/sections/CustomersSection";
 import { ExpensesSection } from "@/components/sections/ExpensesSection";
 import { HomeSection } from "@/components/sections/HomeSection";
+import { OrderHistorySection } from "@/components/sections/OrderHistorySection";
 import { OrdersSection } from "@/components/sections/OrdersSection";
 import { ProductsSection } from "@/components/sections/ProductsSection";
 import { SectionWorkspace } from "@/components/sections/SectionWorkspace";
@@ -667,6 +668,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
           onUpdateOrder={handleUpdateOrder}
         />
       );
+    }
+
+    if (activeSection === "historial") {
+      return <OrderHistorySection orders={orderList} />;
     }
 
     if (activeSection === "stock") {

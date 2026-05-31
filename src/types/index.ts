@@ -1,6 +1,7 @@
 export type SectionKey =
   | "inicio"
   | "pedidos"
+  | "historial"
   | "productos"
   | "stock"
   | "clientes"
