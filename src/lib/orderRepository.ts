@@ -415,3 +415,18 @@ export async function updateOrder(orderId: string, updates: Partial<Order>): Pro
 
   return readOrders();
 }
+
+export async function deleteCanceledOrders(): Promise<number> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return 0;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .delete()
+    .eq("order_status", "Cancelado")
+    .select("id");
+
+  if (error) throw new Error(error.message);
+
+  return data?.length ?? 0;
+}
