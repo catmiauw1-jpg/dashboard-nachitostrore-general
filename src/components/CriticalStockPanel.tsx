@@ -1,11 +1,13 @@
+import { IconPackage } from "@tabler/icons-react";
 import { displayStockName } from "@/lib/format";
 import type { StockItem } from "@/types";
 
 interface CriticalStockPanelProps {
   stock: StockItem[];
+  onOpenStock: () => void;
 }
 
-export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
+export function CriticalStockPanel({ stock, onOpenStock }: CriticalStockPanelProps) {
   const orderedStock = [...stock]
     .sort((first, second) => {
       const firstCritical = first.available <= first.min ? 0 : 1;
@@ -18,7 +20,7 @@ export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
     <article className="panel">
       <div className="panel-header">
         <div>
-          <h3>Stock bajo</h3>
+          <h3><IconPackage size={17} stroke={1.7} />Stock bajo</h3>
           <p>Prendas que necesitan reposicion</p>
         </div>
       </div>
@@ -43,7 +45,7 @@ export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
       </div>
 
       <div className="card-footer">
-        <button className="link-btn" type="button">Ver estado de stock -&gt;</button>
+        <button className="link-btn" onClick={onOpenStock} type="button">Ver estado de stock -&gt;</button>
       </div>
     </article>
   );

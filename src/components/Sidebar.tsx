@@ -1,3 +1,14 @@
+import {
+  IconBrandWhatsapp,
+  IconHistory,
+  IconHome,
+  IconPackage,
+  IconReceipt,
+  IconSettings,
+  IconShoppingBag,
+  IconShirt,
+  IconUsers
+} from "@tabler/icons-react";
 import type { NavigationItem, SectionKey } from "@/types";
 
 interface SidebarProps {
@@ -14,16 +25,16 @@ export function Sidebar({ activeSection, items, onSelect }: SidebarProps) {
     { label: "Operaciones", keys: ["stock", "gastos", "historial"] },
     { label: "Automatizacion", keys: ["whatsapp", "configuracion"] }
   ];
-  const glyphs: Record<SectionKey, string> = {
-    inicio: "IN",
-    pedidos: "PE",
-    historial: "HI",
-    productos: "PR",
-    stock: "ST",
-    clientes: "CL",
-    gastos: "GA",
-    whatsapp: "WA",
-    configuracion: "CO"
+  const icons: Record<SectionKey, typeof IconHome> = {
+    inicio: IconHome,
+    pedidos: IconShoppingBag,
+    historial: IconHistory,
+    productos: IconShirt,
+    stock: IconPackage,
+    clientes: IconUsers,
+    gastos: IconReceipt,
+    whatsapp: IconBrandWhatsapp,
+    configuracion: IconSettings
   };
 
   return (
@@ -43,6 +54,7 @@ export function Sidebar({ activeSection, items, onSelect }: SidebarProps) {
             {group.keys.map((key) => {
               const item = itemByKey.get(key);
               if (!item) return null;
+              const Icon = icons[item.key];
 
               return (
                 <button
@@ -52,7 +64,7 @@ export function Sidebar({ activeSection, items, onSelect }: SidebarProps) {
                   onClick={() => onSelect(item.key)}
                   type="button"
                 >
-                  <span className="menu-icon">{glyphs[item.key]}</span>
+                  <Icon className="menu-icon" size={18} stroke={1.8} />
                   {item.label}
                 </button>
               );

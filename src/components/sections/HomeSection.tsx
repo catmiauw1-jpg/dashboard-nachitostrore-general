@@ -1,8 +1,9 @@
+import { IconBasket, IconCoins, IconCurrencyDollar, IconTrendingUp } from "@tabler/icons-react";
 import { CriticalStockPanel } from "@/components/CriticalStockPanel";
 import { PerformanceChart } from "@/components/PerformanceChart";
 import { RecentOrdersTable } from "@/components/RecentOrdersTable";
 import { WhatsAppBotPanel } from "@/components/WhatsAppBotPanel";
-import type { ChartData, Conversation, Metric, Order, StockItem } from "@/types";
+import type { ChartData, Conversation, Metric, Order, SectionKey, StockItem } from "@/types";
 
 interface HomeSectionProps {
   chartData: ChartData;
@@ -10,6 +11,7 @@ interface HomeSectionProps {
   metrics: Metric[];
   orders: Order[];
   stock: StockItem[];
+  onNavigate: (section: SectionKey) => void;
   onOpenConversations: () => void;
   onToggleBot: (index: number) => void;
 }
@@ -20,6 +22,7 @@ export function HomeSection({
   metrics,
   orders,
   stock,
+  onNavigate,
   onOpenConversations,
   onToggleBot
 }: HomeSectionProps) {
@@ -34,7 +37,8 @@ export function HomeSection({
       value: String(activeOrders.length),
       sub: "En cobro, preparacion o entrega",
       tag: activeOrders.length ? "Activo" : "Al dia",
-      tone: activeOrders.length ? "featured" : ""
+      tone: activeOrders.length ? "featured" : "",
+      Icon: IconBasket
     },
     ...metrics
       .filter((metric) => metric.label !== "Pendientes")
@@ -44,24 +48,13 @@ export function HomeSection({
         value: metric.value,
         sub: metric.details.join(" - "),
         tag: index === 0 ? "Hoy" : index === 1 ? "7 dias" : "Est.",
-        tone: ""
+        tone: "",
+        Icon: index === 0 ? IconCurrencyDollar : index === 1 ? IconTrendingUp : IconCoins
       }))
   ];
 
   return (
     <section className="home-workspace">
-      {attentionChats.length || pendingPayments.length ? (
-        <section className="alert-banner">
-          <span className="alert-icon">!</span>
-          <div className="alert-content">
-            <strong>Atencion requerida</strong>
-            <p>
-              {pendingPayments.length} pedidos por cobrar y {attentionChats.length} conversaciones para revisar antes de producir.
-            </p>
-          </div>
-        </section>
-      ) : null}
-
       <section>
         <div className="home-section-head">
           <span>Resumen de hoy</span>
@@ -72,7 +65,7 @@ export function HomeSection({
             <article className={`stat-card ${card.tone}`} key={card.label}>
               <div className="stat-top">
                 <span className={`stat-icon-wrap icon-${index === 0 ? "purple" : index === 1 ? "green" : index === 2 ? "blue" : "amber"}`}>
-                  {index === 0 ? "P" : index === 1 ? "Bs" : index === 2 ? "7D" : "%"}
+                  <card.Icon size={18} stroke={1.8} />
                 </span>
                 <span className={`stat-trend ${index === 0 && activeOrders.length ? "trend-warn" : index === 0 ? "trend-up" : "trend-neutral"}`}>
                   {card.tag}
@@ -91,52 +84,52 @@ export function HomeSection({
           <span>Que necesita atencion</span>
         </div>
         <div className="attention-grid">
-          <article className="attention-card">
+          <button className="attention-card attention-action" onClick={() => onNavigate("pedidos")} type="button">
             <span className={`attention-dot ${pendingPayments.length ? "dot-warn" : "dot-ok"}`} />
             <div className="attention-body">
               <strong>Pedidos por cobrar</strong>
               <p>{pendingPayments.length ? "Pedidos sin pago completo." : "Sin pagos pendientes."}</p>
             </div>
             <span className="attention-count">{pendingPayments.length}</span>
-          </article>
-          <article className="attention-card">
+          </button>
+          <button className="attention-card attention-action" onClick={() => onNavigate("pedidos")} type="button">
             <span className="attention-dot dot-action" />
             <div className="attention-body">
               <strong>En preparacion</strong>
               <p>Trabajos que necesitan produccion.</p>
             </div>
             <span className="attention-count">{inProduction.length}</span>
-          </article>
-          <article className="attention-card">
+          </button>
+          <button className="attention-card attention-action" onClick={() => onNavigate("stock")} type="button">
             <span className={`attention-dot ${lowStock.length ? "dot-warn" : "dot-ok"}`} />
             <div className="attention-body">
               <strong>Stock bajo</strong>
               <p>{lowStock.length ? "Prendas con pocas unidades." : "Inventario dentro del minimo."}</p>
             </div>
             <span className="attention-count">{lowStock.length}</span>
-          </article>
-          <article className="attention-card">
+          </button>
+          <button className="attention-card attention-action" onClick={() => onNavigate("whatsapp")} type="button">
             <span className={`attention-dot ${attentionChats.length ? "dot-info" : "dot-ok"}`} />
             <div className="attention-body">
               <strong>Chats manuales</strong>
               <p>{attentionChats.length ? "Conversaciones para revisar." : "Bot sin alertas visibles."}</p>
             </div>
             <span className="attention-count">{attentionChats.length}</span>
-          </article>
+          </button>
         </div>
       </section>
 
       <PerformanceChart data={chartData} />
 
       <section className="bottom-row">
-        <RecentOrdersTable orders={orders} />
+        <RecentOrdersTable orders={orders} onOpenOrders={() => onNavigate("pedidos")} />
         <aside className="right-col">
           <WhatsAppBotPanel
             chats={chats}
-            onOpenConversations={onOpenConversations}
+            onOpenConversations={() => onNavigate("whatsapp")}
             onToggleBot={onToggleBot}
           />
-          <CriticalStockPanel stock={stock} />
+          <CriticalStockPanel stock={stock} onOpenStock={() => onNavigate("stock")} />
         </aside>
       </section>
     </section>

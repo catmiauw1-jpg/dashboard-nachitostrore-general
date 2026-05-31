@@ -671,6 +671,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
           metrics={liveMetrics}
           orders={orderList}
           stock={stockList}
+          onNavigate={setActiveSection}
           onOpenConversations={() =>
             showToast(
               "Aquí luego se abrirá el centro de conversaciones con historial, estado del pedido y control del bot."

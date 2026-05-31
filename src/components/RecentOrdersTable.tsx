@@ -1,11 +1,13 @@
+import { IconClock } from "@tabler/icons-react";
 import { badgeClass, formatCurrency } from "@/lib/format";
 import type { Order } from "@/types";
 
 interface RecentOrdersTableProps {
   orders: Order[];
+  onOpenOrders: () => void;
 }
 
-export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
+export function RecentOrdersTable({ orders, onOpenOrders }: RecentOrdersTableProps) {
   const recentOrders = orders
     .filter((order) => order.status !== "Cancelado")
     .slice(0, 5);
@@ -14,7 +16,7 @@ export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
     <article className="panel orders-card">
       <div className="panel-header">
         <div>
-          <h3>Pedidos recientes</h3>
+          <h3><IconClock size={17} stroke={1.7} />Pedidos recientes</h3>
           <p>Ultimos pedidos registrados en el sistema</p>
         </div>
       </div>
@@ -61,7 +63,7 @@ export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
       )}
 
       <div className="card-footer">
-        <button className="link-btn" type="button">Ver todos los pedidos -&gt;</button>
+        <button className="link-btn" onClick={onOpenOrders} type="button">Ver todos los pedidos -&gt;</button>
       </div>
     </article>
   );

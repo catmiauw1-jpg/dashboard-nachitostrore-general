@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { IconChartBar } from "@tabler/icons-react";
 import { capitalize, formatCurrency, months } from "@/lib/format";
 import type { ChartData, ChartPoint, MonthKey, Period } from "@/types";
 
@@ -69,7 +70,7 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
     <article className="panel perf-card">
       <div className="panel-header">
         <div>
-          <h3>Rendimiento de ventas</h3>
+          <h3><IconChartBar size={17} stroke={1.7} />Rendimiento de ventas</h3>
           <p>Ventas en Bs y prendas vendidas por periodo</p>
         </div>
 

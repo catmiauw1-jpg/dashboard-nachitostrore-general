@@ -1,3 +1,5 @@
+import { IconMoon, IconPlus, IconSun, IconUserCircle } from "@tabler/icons-react";
+
 interface TopbarProps {
   adminEmail: string;
   isDark: boolean;
@@ -23,11 +25,12 @@ export function Topbar({ adminEmail, isDark, onRegisterOrder, onSignOut, onToggl
       </div>
       <div className="actions">
         <div className="business-pill">
-          <span className="live-dot" />
+          <IconUserCircle size={16} stroke={1.7} />
           {adminEmail}
         </div>
         <button className="btn primary" onClick={onRegisterOrder} type="button">
-          + Registrar pedido
+          <IconPlus size={16} stroke={1.9} />
+          Registrar pedido
         </button>
         <button
           aria-label="Cambiar tema"
@@ -36,7 +39,7 @@ export function Topbar({ adminEmail, isDark, onRegisterOrder, onSignOut, onToggl
           title="Cambiar tema"
           type="button"
         >
-          {isDark ? "*" : "D"}
+          {isDark ? <IconSun size={17} stroke={1.8} /> : <IconMoon size={17} stroke={1.8} />}
         </button>
         <button className="btn ghost" onClick={onSignOut} type="button">
           Salir

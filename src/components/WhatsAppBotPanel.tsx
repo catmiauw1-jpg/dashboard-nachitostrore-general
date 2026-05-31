@@ -1,3 +1,4 @@
+import { IconBrandWhatsapp } from "@tabler/icons-react";
 import type { Conversation } from "@/types";
 
 interface WhatsAppBotPanelProps {
@@ -25,7 +26,7 @@ export function WhatsAppBotPanel({
     <article className="panel">
       <div className="panel-header">
         <div>
-          <h3>WhatsApp / Bot</h3>
+          <h3><IconBrandWhatsapp size={17} stroke={1.7} />WhatsApp / Bot</h3>
           <p>Estado por conversacion</p>
         </div>
       </div>
