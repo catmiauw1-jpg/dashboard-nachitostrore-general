@@ -22,6 +22,12 @@ import {
 import { sectionDefinitions } from "@/data/sectionDefinitions";
 import type { ChartData, ChartPoint, Conversation, Metric, MonthKey, Order, Product, SectionKey, StockItem } from "@/types";
 
+interface DashboardProps {
+  accessToken: string;
+  adminEmail: string;
+  onSignOut: () => void | Promise<void>;
+}
+
 const monthKeys: MonthKey[] = [
   "enero",
   "febrero",
@@ -171,7 +177,7 @@ function customersFromOrders(orders: Order[]) {
   return [...customersByKey.values()];
 }
 
-export function Dashboard() {
+export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps) {
   const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
   const [isDark, setIsDark] = useState(true);
   const [chats, setChats] = useState<Conversation[]>(initialChats);
@@ -188,12 +194,29 @@ export function Dashboard() {
     setToast(message);
   };
 
+  const authHeaders = useMemo(() => ({ Authorization: `Bearer ${accessToken}` }), [accessToken]);
+  const jsonAuthHeaders = useMemo(
+    () => ({ ...authHeaders, "Content-Type": "application/json" }),
+    [authHeaders]
+  );
+  const apiFetch = useCallback(
+    (input: RequestInfo | URL, init: RequestInit = {}) =>
+      fetch(input, {
+        ...init,
+        headers: {
+          ...authHeaders,
+          ...(init.headers ?? {})
+        }
+      }),
+    [authHeaders]
+  );
+
   const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
     try {
       const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
-        fetch("/api/products", { cache: "no-store" }),
-        fetch("/api/stock", { cache: "no-store" }),
-        fetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
+        apiFetch("/api/products", { cache: "no-store" }),
+        apiFetch("/api/stock", { cache: "no-store" }),
+        apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
       ]);
 
       if (productsResponse.ok) {
@@ -227,7 +250,7 @@ export function Dashboard() {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
       }
     }
-  }, []);
+  }, [apiFetch]);
 
   useEffect(() => {
     document.body.classList.toggle("dark", isDark);
@@ -237,9 +260,9 @@ export function Dashboard() {
     async function loadProducts() {
       try {
         const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
-          fetch("/api/products", { cache: "no-store" }),
-          fetch("/api/stock", { cache: "no-store" }),
-          fetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
+          apiFetch("/api/products", { cache: "no-store" }),
+          apiFetch("/api/stock", { cache: "no-store" }),
+          apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
         ]);
 
         if (productsResponse.ok) {
@@ -265,7 +288,7 @@ export function Dashboard() {
     }
 
     void loadProducts();
-  }, []);
+  }, [apiFetch]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -323,9 +346,9 @@ export function Dashboard() {
     setActiveSection("pedidos");
     void (async () => {
       try {
-        await fetch("/api/orders", {
+        await apiFetch("/api/orders", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: jsonAuthHeaders,
           body: JSON.stringify(order)
         });
         await refreshBusinessData({ notifyNewOrders: false });
@@ -342,9 +365,9 @@ export function Dashboard() {
     );
 
     void (async () => {
-      await fetch("/api/orders", {
+      await apiFetch("/api/orders", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonAuthHeaders,
         body: JSON.stringify({ id: orderId, updates })
       });
       await refreshBusinessData({ notifyNewOrders: false });
@@ -355,9 +378,9 @@ export function Dashboard() {
 
   const handleAddProduct = async (product: Product) => {
     try {
-      const response = await fetch("/api/products", {
+      const response = await apiFetch("/api/products", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonAuthHeaders,
         body: JSON.stringify(product)
       });
 
@@ -378,9 +401,9 @@ export function Dashboard() {
 
   const patchProduct = async (productId: string, updates: Partial<Product>) => {
     try {
-      await fetch("/api/products", {
+      await apiFetch("/api/products", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonAuthHeaders,
         body: JSON.stringify({ id: productId, updates })
       });
     } catch {
@@ -430,9 +453,9 @@ export function Dashboard() {
     setProductList((currentProducts) => currentProducts.filter((item) => item.id !== productId));
 
     try {
-      const response = await fetch("/api/products", {
+      const response = await apiFetch("/api/products", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonAuthHeaders,
         body: JSON.stringify({ id: productId })
       });
 
@@ -466,9 +489,9 @@ export function Dashboard() {
 
     try {
       await applyStockResponse(
-        await fetch("/api/stock", {
+        await apiFetch("/api/stock", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: jsonAuthHeaders,
           body: JSON.stringify(item)
         }),
         () => stockSaveVersionRef.current[item.id] === nextVersion
@@ -493,9 +516,9 @@ export function Dashboard() {
 
     try {
       await applyStockResponse(
-        await fetch("/api/stock", {
+        await apiFetch("/api/stock", {
           method: stockExists ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: jsonAuthHeaders,
           body: JSON.stringify(stockExists ? { id: item.id, delta } : nextItem)
         })
       );
@@ -509,9 +532,9 @@ export function Dashboard() {
 
     try {
       await applyStockResponse(
-        await fetch("/api/stock", {
+        await apiFetch("/api/stock", {
           method: "DELETE",
-          headers: { "Content-Type": "application/json" },
+          headers: jsonAuthHeaders,
           body: JSON.stringify({ color })
         })
       );
@@ -568,6 +591,7 @@ export function Dashboard() {
       return (
         <ProductsSection
           products={productList}
+          uploadHeaders={authHeaders}
           onAddProduct={handleAddProduct}
           onDeleteProduct={handleDeleteProduct}
           onToggleHidden={handleToggleProductHidden}
@@ -627,8 +651,10 @@ export function Dashboard() {
           />
 
           <Topbar
+            adminEmail={adminEmail}
             isDark={isDark}
             onRegisterOrder={() => setIsOrderModalOpen(true)}
+            onSignOut={onSignOut}
             onToggleTheme={() => setIsDark((value) => !value)}
           />
 

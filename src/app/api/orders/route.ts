@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminRequest } from "@/lib/adminAuth";
 import { createOrder, readOrders, updateOrder } from "@/lib/orderRepository";
 import {
   RequestSecurityError,
@@ -258,14 +259,32 @@ export async function OPTIONS(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const orders = await readOrders();
-  return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
+  try {
+    await requireAdminRequest(request);
+
+    const orders = await readOrders();
+    return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 401;
+    const message = error instanceof Error ? error.message : "No autorizado.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
+  }
 }
 
 export async function POST(request: Request) {
   try {
     assertAllowedOrigin(request);
     assertBodySize(request, maxOrderBodyBytes);
+    let isAdminSubmission = false;
+
+    if (request.headers.get("authorization")) {
+      try {
+        await requireAdminRequest(request);
+        isAdminSubmission = true;
+      } catch {
+        isAdminSubmission = false;
+      }
+    }
 
     const contentType = request.headers.get("content-type") ?? "";
     let order: Order;
@@ -273,12 +292,16 @@ export async function POST(request: Request) {
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       const type = valueOf(formData, "type") === catalogType ? "catalog" : "custom";
-      await assertRateLimit(request, { limit: orderWindowLimit, windowMs: orderWindowMs, scope: `orders:${type}` });
+      if (!isAdminSubmission) {
+        await assertRateLimit(request, { limit: orderWindowLimit, windowMs: orderWindowMs, scope: `orders:${type}` });
+      }
       order = await orderFromFormData(formData);
     } else {
       const payload = (await request.json()) as Order & Record<string, unknown>;
       const type = payload.type === catalogType ? "catalog" : "custom";
-      await assertRateLimit(request, { limit: orderWindowLimit, windowMs: orderWindowMs, scope: `orders:${type}` });
+      if (!isAdminSubmission) {
+        await assertRateLimit(request, { limit: orderWindowLimit, windowMs: orderWindowMs, scope: `orders:${type}` });
+      }
       order = orderFromJson(payload);
     }
 
@@ -295,6 +318,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     assertAllowedOrigin(request);
+    await requireAdminRequest(request);
 
     const body = (await request.json()) as { id: string; updates: Partial<Order> };
     const orders = await updateOrder(body.id, body.updates);

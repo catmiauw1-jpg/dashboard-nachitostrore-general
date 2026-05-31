@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdminRequest } from "@/lib/adminAuth";
 import { jsonHeaders } from "@/lib/catalogStore";
 import { readCatalogProducts } from "@/lib/productRepository";
 import { RequestSecurityError, assertAllowedOrigin, secureJsonHeaders } from "@/lib/requestSecurity";
@@ -15,13 +16,21 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: jsonHeaders() });
 }
 
-export async function GET() {
-  return stockResponse();
+export async function GET(request: Request) {
+  try {
+    await requireAdminRequest(request);
+    return stockResponse();
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 401;
+    const message = error instanceof Error ? error.message : "No autorizado.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
+  }
 }
 
 export async function PATCH(request: Request) {
   try {
     assertAllowedOrigin(request);
+    await requireAdminRequest(request);
 
     const item = (await request.json()) as StockItem;
 
@@ -44,6 +53,7 @@ export async function PATCH(request: Request) {
 export async function POST(request: Request) {
   try {
     assertAllowedOrigin(request);
+    await requireAdminRequest(request);
 
     const body = (await request.json()) as { id: string; delta: number };
 
@@ -66,6 +76,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     assertAllowedOrigin(request);
+    await requireAdminRequest(request);
 
     const body = (await request.json()) as { color?: string };
 

@@ -1,19 +1,24 @@
 interface TopbarProps {
+  adminEmail: string;
   isDark: boolean;
   onRegisterOrder: () => void;
+  onSignOut: () => void | Promise<void>;
   onToggleTheme: () => void;
 }
 
-export function Topbar({ isDark, onRegisterOrder, onToggleTheme }: TopbarProps) {
+export function Topbar({ adminEmail, isDark, onRegisterOrder, onSignOut, onToggleTheme }: TopbarProps) {
   return (
     <div className="topbar">
       <div className="business-pill">
         <span className="live-dot" />
-        Datos reales · actualización en tiempo real
+        Admin: {adminEmail}
       </div>
       <div className="actions">
         <button className="btn primary" onClick={onRegisterOrder} type="button">
           Registrar pedido
+        </button>
+        <button className="btn ghost" onClick={onSignOut} type="button">
+          Salir
         </button>
         <button
           aria-label="Cambiar tema"
@@ -22,7 +27,7 @@ export function Topbar({ isDark, onRegisterOrder, onToggleTheme }: TopbarProps) 
           title="Cambiar tema"
           type="button"
         >
-          {isDark ? "☀" : "☾"}
+          {isDark ? "Sol" : "Luna"}
         </button>
       </div>
     </div>

@@ -1,7 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { requireAdminRequest } from "@/lib/adminAuth";
 import { jsonHeaders } from "@/lib/catalogStore";
+import { RequestSecurityError, assertAllowedOrigin, secureJsonHeaders } from "@/lib/requestSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -25,6 +27,15 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: Request) {
+  try {
+    assertAllowedOrigin(request);
+    await requireAdminRequest(request);
+  } catch (error) {
+    const status = error instanceof RequestSecurityError ? error.status : 401;
+    const message = error instanceof Error ? error.message : "No autorizado.";
+    return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
+  }
+
   const formData = await request.formData();
   const file = formData.get("image");
 

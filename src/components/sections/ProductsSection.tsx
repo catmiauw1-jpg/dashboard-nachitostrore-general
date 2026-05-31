@@ -5,6 +5,7 @@ import type { Product } from "@/types";
 
 interface ProductsSectionProps {
   products: Product[];
+  uploadHeaders?: HeadersInit;
   onAddProduct: (product: Product) => void | Promise<void>;
   onDeleteProduct: (productId: string) => void | Promise<void>;
   onToggleHidden: (productId: string) => void;
@@ -45,6 +46,7 @@ function formatWebCategory(value: string) {
 
 export function ProductsSection({
   products,
+  uploadHeaders,
   onAddProduct,
   onDeleteProduct,
   onToggleHidden,
@@ -123,6 +125,7 @@ export function ProductsSection({
 
         const response = await fetch("/api/uploads", {
           method: "POST",
+          headers: uploadHeaders,
           body: formData
         });
 

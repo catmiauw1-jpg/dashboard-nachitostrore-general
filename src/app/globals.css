@@ -81,6 +81,55 @@ button {
   min-height: 100vh;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin: 8px 0;
+  font-size: clamp(32px, 7vw, 52px);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.auth-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.auth-message {
+  padding: 12px 14px;
+  border: 1px solid var(--red-soft);
+  border-radius: 14px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 800;
+}
+
+.auth-submit {
+  width: 100%;
+  justify-content: center;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
