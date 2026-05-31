@@ -1,0 +1,124 @@
+{
+  "name": "PoleraFlow WhatsApp Bot - Starter",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "poleraflow-whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b3d7a1a8-8b6e-4c35-bb1a-4c8ab2edb001",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\nconst value = body.entry?.[0]?.changes?.[0]?.value ?? body;\nconst contact = value.contacts?.[0] ?? {};\nconst message = value.messages?.[0] ?? {};\nconst text = message.text?.body ?? body.text ?? body.message ?? '';\nconst phone = message.from ?? contact.wa_id ?? body.phone ?? '';\nconst customerName = contact.profile?.name ?? body.customerName ?? 'Cliente WhatsApp';\n\nreturn [{\n  json: {\n    rawText: text,\n    customerName,\n    customerPhone: phone,\n    messageType: message.type ?? 'text',\n    whatsappMessageId: message.id,\n    receivedAt: new Date().toISOString(),\n    action: 'create_order',\n    type: text.toLowerCase().includes('personalizada') ? 'custom' : 'catalog',\n    product: text.toLowerCase().includes('personalizada') ? 'Polera personalizada' : 'Pedido catalogo',\n    color: text.match(/color:\\s*([^.,]+)/i)?.[1]?.trim(),\n    size: text.match(/talla:\\s*([^.,]+)/i)?.[1]?.trim(),\n    quantity: Number(text.match(/(\\d+)\\s*prenda/i)?.[1] ?? 1),\n    total: Number(text.match(/bs\\s*(\\d+)/i)?.[1] ?? 0),\n    notes: text,\n    designDetails: text,\n    quoteOption: text.match(/(solo\\s+[^.]+|frente\\s+[^.]+|espalda\\s+[^.]+)/i)?.[1]?.trim()\n  }\n}];"
+      },
+      "id": "a0d39bdc-8bc4-4be1-a8a9-3d2c66f63002",
+      "name": "Normalize WhatsApp Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://admin-dhasboard.vercel.app/api/webhooks/n8n/whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-poleraflow-webhook-secret",
+              "value": "CAMBIA_ESTO_POR_TU_N8N_WEBHOOK_SECRET"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "ac45140d-9d7b-4a98-a906-a819321eb003",
+      "name": "Register Order in PoleraFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, poleraflow: $json } }}",
+        "options": {}
+      },
+      "id": "9d37bb0a-1fcf-49cd-ad3b-e3c82a1d0004",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Register Order in PoleraFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Order in PoleraFlow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "starter",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
