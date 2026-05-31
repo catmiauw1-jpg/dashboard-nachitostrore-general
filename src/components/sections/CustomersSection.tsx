@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
-import type { Order } from "@/types";
+import type { Order, OrderLineItem } from "@/types";
 
 interface CustomersSectionProps {
   orders: Order[];
@@ -25,9 +25,10 @@ interface CustomerProfile {
   favoriteSize: string;
   favoriteColor: string;
   preferredType: string;
+  favoriteProduct: string;
 }
 
-type SourceFilter = "all" | "web" | "other";
+type SourceFilter = "all" | "web" | "active" | "frequent" | "other";
 
 function formatOrderDate(value?: string) {
   if (!value) return "Sin fecha";
@@ -51,12 +52,45 @@ function mostCommon(values: Array<string | undefined>, fallback: string) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallback;
 }
 
+function normalizePhone(value?: string) {
+  return value?.replace(/[^\d+]/g, "").trim() || "";
+}
+
+function isGenericCustomerName(value: string) {
+  return ["cliente web", "cliente", "sin nombre", "cliente sin nombre"].includes(value.trim().toLowerCase());
+}
+
 function customerKey(order: Order) {
-  return order.customerPhone?.trim() || order.customer.trim().toLowerCase() || order.id;
+  const phone = normalizePhone(order.customerPhone);
+  if (phone) return `phone:${phone}`;
+
+  const name = order.customer.trim().toLowerCase();
+  if (name && !isGenericCustomerName(name)) return `name:${name}`;
+
+  return `order:${order.id}`;
 }
 
 function isNachitoStoreOrder(order: Order) {
   return order.channel === "Web" || order.source === "Web catálogo" || order.source === "Web personaliza";
+}
+
+function orderItems(order: Order): OrderLineItem[] {
+  if (order.items?.length) return order.items;
+
+  const quantity = Math.max(1, order.prendas || 1);
+
+  return [
+    {
+      productName: order.product,
+      size: order.size,
+      color: order.color,
+      quantity,
+      unitPrice: order.total / quantity,
+      lineTotal: order.total,
+      isCustom: order.type === "Personalizada",
+      description: order.designDetails
+    }
+  ];
 }
 
 function buildCustomerProfiles(orders: Order[]): CustomerProfile[] {
@@ -79,11 +113,12 @@ function buildCustomerProfiles(orders: Order[]): CustomerProfile[] {
       const completedOrders = sortedOrders.filter((order) => order.status === "Entregado");
       const canceledOrders = sortedOrders.filter((order) => order.status === "Cancelado");
       const oldestOrder = sortedOrders[sortedOrders.length - 1];
+      const items = sortedOrders.flatMap(orderItems);
 
       return {
         key,
-        name: sortedOrders[0]?.customer ?? "Cliente sin nombre",
-        phone: sortedOrders.find((order) => order.customerPhone)?.customerPhone,
+        name: sortedOrders.find((order) => !isGenericCustomerName(order.customer))?.customer ?? sortedOrders[0]?.customer ?? "Cliente sin nombre",
+        phone: sortedOrders.find((order) => normalizePhone(order.customerPhone))?.customerPhone,
         registeredAt: oldestOrder?.createdAt,
         fromNachitoStore: sortedOrders.some(isNachitoStoreOrder),
         channels: [...new Set(sortedOrders.map((order) => order.channel))],
@@ -94,9 +129,10 @@ function buildCustomerProfiles(orders: Order[]): CustomerProfile[] {
         totalSpent: billableOrders.reduce((sum, order) => sum + order.total, 0),
         totalGarments: billableOrders.reduce((sum, order) => sum + order.prendas, 0),
         lastOrder: sortedOrders[0],
-        favoriteSize: mostCommon(sortedOrders.map((order) => order.size), "Por confirmar"),
-        favoriteColor: mostCommon(sortedOrders.map((order) => order.color), "Por confirmar"),
-        preferredType: mostCommon(sortedOrders.map((order) => order.type), "Sin preferencia")
+        favoriteSize: mostCommon(items.map((item) => item.size), "Por confirmar"),
+        favoriteColor: mostCommon(items.map((item) => item.color), "Por confirmar"),
+        preferredType: mostCommon(sortedOrders.map((order) => order.type), "Sin preferencia"),
+        favoriteProduct: mostCommon(items.map((item) => item.productName), "Sin producto frecuente")
       };
     })
     .sort((a, b) => {
@@ -110,12 +146,33 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(null);
+  const [customerNotes, setCustomerNotes] = useState<Record<string, string>>({});
 
   const customers = useMemo(() => buildCustomerProfiles(orders), [orders]);
+
+  useEffect(() => {
+    try {
+      const storedNotes = window.localStorage.getItem("poleraflow-customer-notes");
+      if (storedNotes) setCustomerNotes(JSON.parse(storedNotes) as Record<string, string>);
+    } catch {
+      setCustomerNotes({});
+    }
+  }, []);
+
+  const saveCustomerNote = (customerKeyValue: string, note: string) => {
+    setCustomerNotes((currentNotes) => {
+      const nextNotes = { ...currentNotes, [customerKeyValue]: note };
+      window.localStorage.setItem("poleraflow-customer-notes", JSON.stringify(nextNotes));
+      return nextNotes;
+    });
+  };
+
   const filteredCustomers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const sourceFilteredCustomers = customers.filter((customer) => {
       if (sourceFilter === "web") return customer.fromNachitoStore;
+      if (sourceFilter === "active") return customer.activeOrders.length > 0;
+      if (sourceFilter === "frequent") return customer.orders.length > 1;
       if (sourceFilter === "other") return !customer.fromNachitoStore;
       return true;
     });
@@ -128,7 +185,9 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
         customer.phone,
         customer.favoriteColor,
         customer.favoriteSize,
+        customer.favoriteProduct,
         customer.preferredType,
+        customerNotes[customer.key],
         customer.fromNachitoStore ? "Nachito Store web registrado" : "Manual WhatsApp",
         ...customer.channels
       ]
@@ -137,7 +196,8 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
         .toLowerCase()
         .includes(normalizedQuery)
     );
-  }, [customers, query, sourceFilter]);
+  }, [customerNotes, customers, query, sourceFilter]);
+
   const selectedCustomer = selectedCustomerKey
     ? customers.find((customer) => customer.key === selectedCustomerKey)
     : filteredCustomers[0] ?? customers[0];
@@ -146,6 +206,10 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
   const activeCustomers = customers.filter((customer) => customer.activeOrders.length > 0).length;
   const webCustomers = customers.filter((customer) => customer.fromNachitoStore).length;
   const totalRevenue = customers.reduce((sum, customer) => sum + customer.totalSpent, 0);
+  const selectedCustomerNote = selectedCustomer ? customerNotes[selectedCustomer.key] ?? "" : "";
+  const whatsappLink = selectedCustomer?.phone
+    ? `https://wa.me/${normalizePhone(selectedCustomer.phone).replace(/^\+/, "")}`
+    : "";
 
   return (
     <section className="section-workspace">
@@ -159,9 +223,9 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
 
       <div className="section-summary-grid">
         <article className="section-summary-card">
-          <span>Total clientes</span>
+          <span>Clientes únicos</span>
           <strong>{customers.length}</strong>
-          <small>Detectados por pedidos</small>
+          <small>Agrupados por WhatsApp</small>
         </article>
         <article className="section-summary-card">
           <span>Desde la web</span>
@@ -171,12 +235,12 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
         <article className="section-summary-card">
           <span>Frecuentes</span>
           <strong>{frequentCustomers}</strong>
-          <small>Mas de un pedido</small>
+          <small>Más de un pedido</small>
         </article>
         <article className="section-summary-card">
-          <span>Activos</span>
-          <strong>{activeCustomers}</strong>
-          <small>Con pedido abierto</small>
+          <span>Total comprado</span>
+          <strong>{formatCurrency(totalRevenue)}</strong>
+          <small>Sin cancelados</small>
         </article>
       </div>
 
@@ -186,7 +250,7 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
             <div className="panel-header compact-panel-header">
               <div>
                 <h3>Registro de clientes</h3>
-                <p>Busca por nombre, WhatsApp, color, talla u origen.</p>
+                <p>Busca por nombre, WhatsApp, color, talla, prenda u origen.</p>
               </div>
             </div>
             <input
@@ -204,6 +268,12 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
             </button>
             <button className={sourceFilter === "web" ? "active" : ""} onClick={() => setSourceFilter("web")} type="button">
               Nachito Store
+            </button>
+            <button className={sourceFilter === "active" ? "active" : ""} onClick={() => setSourceFilter("active")} type="button">
+              Activos
+            </button>
+            <button className={sourceFilter === "frequent" ? "active" : ""} onClick={() => setSourceFilter("frequent")} type="button">
+              Frecuentes
             </button>
             <button className={sourceFilter === "other" ? "active" : ""} onClick={() => setSourceFilter("other")} type="button">
               Otros
@@ -227,6 +297,9 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
                     </span>
                   </div>
                   <p>{customer.phone ?? "Sin WhatsApp"} · Registrado {formatOrderDate(customer.registeredAt)}</p>
+                  <small className="customer-last-order">
+                    Último pedido: {customer.lastOrder ? formatOrderDate(customer.lastOrder.createdAt) : "Sin fecha"}
+                  </small>
                   <div className="customer-card-stats">
                     <span>{customer.orders.length} pedidos</span>
                     <span>{formatCurrency(customer.totalSpent)}</span>
@@ -239,7 +312,7 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
             {!filteredCustomers.length ? (
               <div className="empty-state order-empty-state">
                 <strong>No hay clientes en este filtro</strong>
-                <p>Cuando alguien compre o cotice desde Nachito Store, aparecera aqui con su WhatsApp.</p>
+                <p>Cuando alguien compre o cotice desde Nachito Store, aparecerá aquí con su WhatsApp.</p>
               </div>
             ) : null}
           </div>
@@ -255,8 +328,14 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
                   <p>{selectedCustomer.phone ?? "Sin WhatsApp guardado"} · Registrado {formatOrderDate(selectedCustomer.registeredAt)}</p>
                 </div>
                 <span className={`badge ${selectedCustomer.activeOrders.length ? "warning" : "success"}`}>
-                  {selectedCustomer.activeOrders.length ? "Pedido activo" : "Al dia"}
+                  {selectedCustomer.activeOrders.length ? "Pedido activo" : "Al día"}
                 </span>
+              </div>
+
+              <div className="customer-actions">
+                <a className={`btn ${whatsappLink ? "" : "disabled"}`} href={whatsappLink || undefined} target="_blank" rel="noreferrer">
+                  Abrir WhatsApp
+                </a>
               </div>
 
               <div className="customer-detail-grid">
@@ -266,7 +345,7 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
                 </div>
                 <div>
                   <span>Total comprado</span>
-                  <strong>{formatCurrency(totalRevenue ? selectedCustomer.totalSpent : 0)}</strong>
+                  <strong>{formatCurrency(selectedCustomer.totalSpent)}</strong>
                 </div>
                 <div>
                   <span>Prendas</span>
@@ -281,8 +360,8 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
                   <strong>{selectedCustomer.favoriteColor}</strong>
                 </div>
                 <div>
-                  <span>Canal</span>
-                  <strong>{selectedCustomer.channels.join(", ")}</strong>
+                  <span>Prenda frecuente</span>
+                  <strong>{selectedCustomer.favoriteProduct}</strong>
                 </div>
               </div>
 
@@ -295,7 +374,21 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
                   <span>{selectedCustomer.completedOrders.length} entregados</span>
                   <span>{selectedCustomer.canceledOrders.length} cancelados</span>
                   <span>{selectedCustomer.activeOrders.length} activos</span>
+                  <span>{selectedCustomer.channels.join(", ")}</span>
                 </div>
+              </div>
+
+              <div className="order-detail-block">
+                <div className="order-detail-title">
+                  <h4>Notas internas</h4>
+                  <span>Solo dashboard</span>
+                </div>
+                <textarea
+                  className="customer-note-field"
+                  onChange={(event) => saveCustomerNote(selectedCustomer.key, event.target.value)}
+                  placeholder="Ej: le gusta oversize negro, paga por QR, prefiere recoger..."
+                  value={selectedCustomerNote}
+                />
               </div>
 
               <div className="order-detail-block">
@@ -322,7 +415,7 @@ export function CustomersSection({ orders }: CustomersSectionProps) {
           ) : (
             <div className="empty-state order-detail-empty">
               <strong>Sin clientes</strong>
-              <p>Los clientes apareceran cuando entren pedidos reales desde la tienda.</p>
+              <p>Los clientes aparecerán cuando entren pedidos reales desde la tienda.</p>
             </div>
           )}
         </aside>
