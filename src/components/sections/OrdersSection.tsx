@@ -10,10 +10,10 @@ interface OrdersSectionProps {
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
 }
 
-type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos" | "Entregados" | "Cancelados";
+type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos";
 
 const orderFilters: Array<"Todos" | OrderType> = ["Todos", "Catálogo", "Personalizada"];
-const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos", "Entregados", "Cancelados"];
+const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos"];
 const paymentStatuses: PaymentStatus[] = ["Pendiente", "50% pagado", "Pago completo"];
 const orderStatuses: OrderStatus[] = [
   "Esperando pago",
@@ -92,8 +92,6 @@ function orderSearchText(order: Order) {
 function matchesStage(order: Order, stage: StageFilter) {
   if (stage === "Activos") return order.status !== "Entregado" && order.status !== "Cancelado";
   if (stage === "Listos") return order.status === "Lista para enviar";
-  if (stage === "Entregados") return order.status === "Entregado";
-  if (stage === "Cancelados") return order.status === "Cancelado";
   return order.status === stage;
 }
 
@@ -136,6 +134,8 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
   const displayedOrders = visibleOrders.filter((order) => matchesStage(order, activeStage));
   const activeOrders = orders.filter((order) => order.status !== "Entregado" && order.status !== "Cancelado");
+  const completedOrders = orders.filter((order) => order.status === "Entregado");
+  const canceledOrders = orders.filter((order) => order.status === "Cancelado");
   const customWebOrders = orders.filter(
     (order) =>
       order.type === "Personalizada" &&
@@ -160,8 +160,6 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
   const updateStatus = (orderId: string, status: OrderStatus) => {
     onUpdateOrder(orderId, { status });
-    if (status === "Cancelado") setActiveStage("Cancelados");
-    if (status === "Entregado") setActiveStage("Entregados");
   };
 
   const downloadReference = async (reference: string) => {
@@ -513,6 +511,88 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           )}
         </aside>
       </div>
+
+      <article className="panel order-history-panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">Historial</span>
+            <h3>Pedidos cerrados</h3>
+            <p>Separado para revisar lo que ya se entregó y lo que se canceló sin mezclarlo con preparación.</p>
+          </div>
+        </div>
+
+        <div className="order-history-grid">
+          <div className="order-history-column">
+            <div className="order-history-heading">
+              <h4>Entregados</h4>
+              <span className="badge success">{completedOrders.length}</span>
+            </div>
+
+            <div className="order-history-list">
+              {completedOrders.slice(0, 8).map((order) => {
+                const items = orderItems(order);
+
+                return (
+                  <button
+                    className="history-order-card"
+                    key={order.id}
+                    onClick={() => setSelectedOrderId(order.id)}
+                    type="button"
+                  >
+                    <div>
+                      <strong>{order.id}</strong>
+                      <p>{mainOrderTitle(order, items)} · {formatOrderDate(order.createdAt)}</p>
+                    </div>
+                    <span>{formatCurrency(order.total)}</span>
+                  </button>
+                );
+              })}
+
+              {!completedOrders.length ? (
+                <div className="empty-state compact-empty">
+                  <strong>Sin entregados</strong>
+                  <p>Cuando marques pedidos como entregados aparecerán aquí.</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="order-history-column">
+            <div className="order-history-heading">
+              <h4>Cancelados</h4>
+              <span className="badge danger">{canceledOrders.length}</span>
+            </div>
+
+            <div className="order-history-list">
+              {canceledOrders.slice(0, 8).map((order) => {
+                const items = orderItems(order);
+
+                return (
+                  <button
+                    className="history-order-card canceled"
+                    key={order.id}
+                    onClick={() => setSelectedOrderId(order.id)}
+                    type="button"
+                  >
+                    <div>
+                      <strong>{order.id}</strong>
+                      <p>{mainOrderTitle(order, items)} · {formatOrderDate(order.createdAt)}</p>
+                    </div>
+                    <span>{formatCurrency(order.total)}</span>
+                  </button>
+                );
+              })}
+
+              {!canceledOrders.length ? (
+                <div className="empty-state compact-empty">
+                  <strong>Sin cancelados</strong>
+                  <p>Los cancelados se limpian automáticamente cada 24 horas.</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </article>
 
       {previewReference ? (
         <div className="image-preview-backdrop" onClick={() => setPreviewReference(null)} role="presentation">

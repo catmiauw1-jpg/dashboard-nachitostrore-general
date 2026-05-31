@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
 import { CustomersSection } from "@/components/sections/CustomersSection";
+import { ExpensesSection } from "@/components/sections/ExpensesSection";
 import { HomeSection } from "@/components/sections/HomeSection";
 import { OrdersSection } from "@/components/sections/OrdersSection";
 import { ProductsSection } from "@/components/sections/ProductsSection";
@@ -20,7 +21,7 @@ import {
   stockData
 } from "@/data/mockData";
 import { sectionDefinitions } from "@/data/sectionDefinitions";
-import type { ChartData, ChartPoint, Conversation, Metric, MonthKey, Order, Product, SectionKey, StockItem } from "@/types";
+import type { ChartData, ChartPoint, Conversation, Expense, Metric, MonthKey, Order, Product, SectionKey, StockItem } from "@/types";
 
 interface DashboardProps {
   accessToken: string;
@@ -111,7 +112,7 @@ function buildLiveChartData(ordersToChart: Order[]): ChartData {
   return { weekly, monthly, yearly };
 }
 
-function buildLiveMetrics(ordersToSummarize: Order[]): Metric[] {
+function buildLiveMetrics(ordersToSummarize: Order[], expensesToSummarize: Expense[] = []): Metric[] {
   const today = new Date();
   const todayOrders = ordersToSummarize.filter((order) => {
     const date = orderDate(order);
@@ -130,6 +131,13 @@ function buildLiveMetrics(ordersToSummarize: Order[]): Metric[] {
   ).length;
   const todaySummary = ordersSummary(todayOrders);
   const weekSummary = ordersSummary(weekOrders);
+  const weekBusinessExpenses = expensesToSummarize
+    .filter((expense) => {
+      const date = new Date(`${expense.expenseDate}T12:00:00`);
+      return expense.scope === "Tienda" && !Number.isNaN(date.getTime()) && date >= weekStart && date <= today;
+    })
+    .reduce((sum, expense) => sum + expense.amount, 0);
+  const estimatedProfit = Math.max(0, Math.round(weekSummary.ventas * 0.35) - weekBusinessExpenses);
 
   return [
     {
@@ -146,9 +154,9 @@ function buildLiveMetrics(ordersToSummarize: Order[]): Metric[] {
     },
     {
       label: "Ganancia estimada",
-      value: `${Math.round(weekSummary.ventas * 0.35).toLocaleString("es-BO")} Bs`,
+      value: `${estimatedProfit.toLocaleString("es-BO")} Bs`,
       icon: "%",
-      details: ["Estimado sobre ventas recientes"]
+      details: ["Ventas menos gastos tienda"]
     },
     {
       label: "Pendientes",
@@ -182,6 +190,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   const [isDark, setIsDark] = useState(true);
   const [chats, setChats] = useState<Conversation[]>(initialChats);
   const [orderList, setOrderList] = useState<Order[]>([]);
+  const [expenseList, setExpenseList] = useState<Expense[]>([]);
   const [productList, setProductList] = useState<Product[]>(products);
   const [stockList, setStockList] = useState<StockItem[]>(stockData);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -213,10 +222,11 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
   const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
     try {
-      const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
+      const [productsResponse, stockResponse, ordersResponse, expensesResponse] = await Promise.all([
         apiFetch("/api/products", { cache: "no-store" }),
         apiFetch("/api/stock", { cache: "no-store" }),
-        apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
+        apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
+        apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" })
       ]);
 
       if (productsResponse.ok) {
@@ -245,6 +255,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
         hasLoadedOrdersRef.current = true;
       }
+
+      if (expensesResponse.ok) {
+        setExpenseList((await expensesResponse.json()) as Expense[]);
+      }
     } catch {
       if (options?.showError) {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -259,10 +273,11 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   useEffect(() => {
     async function loadProducts() {
       try {
-        const [productsResponse, stockResponse, ordersResponse] = await Promise.all([
+        const [productsResponse, stockResponse, ordersResponse, expensesResponse] = await Promise.all([
           apiFetch("/api/products", { cache: "no-store" }),
           apiFetch("/api/stock", { cache: "no-store" }),
-          apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" })
+          apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
+          apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" })
         ]);
 
         if (productsResponse.ok) {
@@ -281,6 +296,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
           setOrderList(nextOrders);
           orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
           hasLoadedOrdersRef.current = true;
+        }
+
+        if (expensesResponse.ok) {
+          setExpenseList((await expensesResponse.json()) as Expense[]);
         }
       } catch {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -544,6 +563,45 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     }
   };
 
+  const handleAddExpense = async (expense: Expense) => {
+    setExpenseList((currentExpenses) => [expense, ...currentExpenses]);
+
+    try {
+      const response = await apiFetch("/api/expenses", {
+        method: "POST",
+        headers: jsonAuthHeaders,
+        body: JSON.stringify(expense)
+      });
+
+      if (!response.ok) throw new Error("No se pudo guardar");
+
+      setExpenseList((await response.json()) as Expense[]);
+      showToast(`Gasto "${expense.title}" registrado.`);
+    } catch {
+      showToast("El gasto quedÃ³ local, pero no se pudo guardar en la API.");
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    const expense = expenseList.find((item) => item.id === expenseId);
+    setExpenseList((currentExpenses) => currentExpenses.filter((item) => item.id !== expenseId));
+
+    try {
+      const response = await apiFetch("/api/expenses", {
+        method: "DELETE",
+        headers: jsonAuthHeaders,
+        body: JSON.stringify({ id: expenseId })
+      });
+
+      if (!response.ok) throw new Error("No se pudo eliminar");
+
+      setExpenseList((await response.json()) as Expense[]);
+      showToast(expense ? `Gasto "${expense.title}" eliminado.` : "Gasto eliminado.");
+    } catch {
+      showToast("El gasto se quitÃ³ localmente, pero no se pudo eliminar en la API.");
+    }
+  };
+
   const handleSectionPrimaryAction = () => {
     if (activeSection === "pedidos") {
       setIsOrderModalOpen(true);
@@ -560,8 +618,8 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
   const liveMetrics = useMemo(() => {
     const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
-    return buildLiveMetrics(countedOrders);
-  }, [orderList]);
+    return buildLiveMetrics(countedOrders, expenseList);
+  }, [expenseList, orderList]);
   const customerOptions = useMemo(() => customersFromOrders(orderList), [orderList]);
   const liveChartData = useMemo(() => {
     const countedOrders = orderList.filter((order) => order.status !== "Cancelado");
@@ -624,6 +682,17 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
     if (activeSection === "clientes") {
       return <CustomersSection orders={orderList} />;
+    }
+
+    if (activeSection === "gastos") {
+      return (
+        <ExpensesSection
+          expenses={expenseList}
+          orders={orderList}
+          onAddExpense={handleAddExpense}
+          onDeleteExpense={handleDeleteExpense}
+        />
+      );
     }
 
     return (

@@ -43,6 +43,19 @@ export type OrderSource = "Web catálogo" | "Web personaliza" | "WhatsApp bot" |
 
 export type BotOrderStatus = "Bot registrado" | "Esperando comprobante" | "Atención manual";
 
+export type ExpenseScope = "Tienda" | "Personal";
+
+export type ExpenseCategory =
+  | "Poleras"
+  | "DTF"
+  | "Empaques"
+  | "Publicidad"
+  | "Entrega"
+  | "Herramientas"
+  | "Servicios"
+  | "Personal"
+  | "Otro";
+
 export interface OrderLineItem {
   productName: string;
   size?: string;
@@ -132,6 +145,17 @@ export interface Order {
   stockDeducted?: boolean;
   stockDeductedAt?: string;
   items?: OrderLineItem[];
+}
+
+export interface Expense {
+  id: string;
+  scope: ExpenseScope;
+  title: string;
+  category: ExpenseCategory;
+  amount: number;
+  expenseDate: string;
+  notes?: string;
+  createdAt?: string;
 }
 
 export interface Conversation {
