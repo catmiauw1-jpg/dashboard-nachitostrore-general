@@ -26,9 +26,6 @@ export function HomeSection({
   const activeOrders = orders.filter((order) => order.status !== "Cancelado" && order.status !== "Entregado");
   const pendingPayments = activeOrders.filter((order) => order.payment !== "Pago completo");
   const inProduction = activeOrders.filter((order) => order.status.toLowerCase().includes("prepar"));
-  const readyOrders = activeOrders.filter((order) => order.status === "Lista para enviar");
-  const customOrders = activeOrders.filter((order) => order.type === "Personalizada");
-  const catalogOrders = activeOrders.filter((order) => order.type.toLowerCase().includes("cat"));
   const lowStock = stock.filter((item) => item.available <= item.min);
   const attentionChats = chats.filter((chat) => chat.alert || !chat.bot);
   const summaryCards = [

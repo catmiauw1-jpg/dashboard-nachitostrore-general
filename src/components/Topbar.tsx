@@ -27,7 +27,7 @@ export function Topbar({ adminEmail, isDark, onRegisterOrder, onSignOut, onToggl
           {adminEmail}
         </div>
         <button className="btn primary" onClick={onRegisterOrder} type="button">
-          Registrar pedido
+          + Registrar pedido
         </button>
         <button
           aria-label="Cambiar tema"

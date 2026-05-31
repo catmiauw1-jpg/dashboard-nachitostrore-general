@@ -6,6 +6,16 @@ interface WhatsAppBotPanelProps {
   onToggleBot: (index: number) => void;
 }
 
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "WA";
+}
+
 export function WhatsAppBotPanel({
   chats,
   onOpenConversations,
@@ -16,38 +26,30 @@ export function WhatsAppBotPanel({
       <div className="panel-header">
         <div>
           <h3>WhatsApp / Bot</h3>
-          <p>Activa o pausa el bot en cada conversación.</p>
+          <p>Estado por conversacion</p>
         </div>
-        <span className="badge accent">Control manual</span>
       </div>
 
-      <div className="chat-list">
+      <div className="bot-list">
         {chats.map((chat, index) => (
-          <div className="chat-item" key={chat.phone}>
-            <div>
-              <h4>
-                {chat.name}
-                {chat.alert ? " · requiere atención" : ""}
-              </h4>
-              <p>{chat.status}</p>
-              <p>{chat.phone}</p>
-            </div>
-            <button
-              aria-pressed={chat.bot}
-              className={`bot-toggle ${chat.bot ? "bot-on" : ""}`}
-              onClick={() => onToggleBot(index)}
-              title={chat.bot ? "Apagar bot" : "Activar bot"}
-              type="button"
-            >
-              <span>{chat.bot ? "ON" : "OFF"}</span>
-            </button>
-          </div>
+          <button className="bot-item" key={chat.phone} onClick={() => onToggleBot(index)} type="button">
+            <span className="bot-avatar">{initials(chat.name)}</span>
+            <span className="bot-copy">
+              <strong>{chat.name}</strong>
+              <small>{chat.phone}</small>
+            </span>
+            <span className={`bot-tag ${chat.alert ? "tag-warn" : chat.bot ? "tag-on" : "tag-off"}`}>
+              {chat.alert ? "Requiere atencion" : chat.bot ? "Bot on" : "Bot off"}
+            </span>
+          </button>
         ))}
       </div>
 
-      <button className="btn full-width-action" onClick={onOpenConversations} type="button">
-        Abrir centro de conversaciones
-      </button>
+      <div className="card-footer">
+        <button className="link-btn" onClick={onOpenConversations} type="button">
+          Abrir centro de conversaciones -&gt;
+        </button>
+      </div>
     </article>
   );
 }

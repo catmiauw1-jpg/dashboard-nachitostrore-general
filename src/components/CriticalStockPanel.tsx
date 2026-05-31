@@ -1,4 +1,4 @@
-import { badgeClass, displayStockName } from "@/lib/format";
+import { displayStockName } from "@/lib/format";
 import type { StockItem } from "@/types";
 
 interface CriticalStockPanelProps {
@@ -6,42 +6,44 @@ interface CriticalStockPanelProps {
 }
 
 export function CriticalStockPanel({ stock }: CriticalStockPanelProps) {
-  const lowStock = stock.filter((item) => item.available <= item.min).length;
-  const orderedStock = [...stock].sort((first, second) => {
-    const firstCritical = first.available <= first.min ? 0 : 1;
-    const secondCritical = second.available <= second.min ? 0 : 1;
-    return firstCritical - secondCritical || first.available - second.available;
-  });
+  const orderedStock = [...stock]
+    .sort((first, second) => {
+      const firstCritical = first.available <= first.min ? 0 : 1;
+      const secondCritical = second.available <= second.min ? 0 : 1;
+      return firstCritical - secondCritical || first.available - second.available;
+    })
+    .slice(0, 4);
 
   return (
     <article className="panel">
       <div className="panel-header">
         <div>
-          <h3>Estado de stock</h3>
-          <p>Prendas base disponibles para producir pedidos.</p>
+          <h3>Stock bajo</h3>
+          <p>Prendas que necesitan reposicion</p>
         </div>
-        <span className={`badge ${lowStock ? "danger" : "success"}`}>{lowStock} bajos</span>
       </div>
 
       <div className="stock-list">
         {orderedStock.map((item) => {
-          const status = item.available <= item.min ? "Bajo" : "OK";
+          const isLow = item.available <= item.min;
 
           return (
             <div className="stock-item" key={item.item}>
               <div>
-                <h4>{displayStockName(item.item)}</h4>
-                <p>
-                  Minimo sugerido: {item.min} - Disponible: {item.available}
-                </p>
+                <div className="stock-name">{displayStockName(item.item).replace(/\s+[MLX]+$/i, "")}</div>
+                <div className="stock-size">Talla {item.size}</div>
               </div>
-              <div className="stock-meta">
-                <span className="stock-number">{item.available}</span>
-                <span className={`badge ${badgeClass(status)}`}>{status}</span>
+              <div className="stock-right">
+                <span className="stock-qty">{item.available}</span>
+                <span className={`badge ${isLow ? "badge-low" : "success"}`}>{isLow ? "Bajo" : "OK"}</span>
               </div>
             </div>
           );
         })}
+      </div>
+
+      <div className="card-footer">
+        <button className="link-btn" type="button">Ver estado de stock -&gt;</button>
       </div>
     </article>
   );

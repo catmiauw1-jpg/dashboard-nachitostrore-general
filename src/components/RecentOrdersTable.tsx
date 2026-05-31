@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
 import type { Order } from "@/types";
 
@@ -7,81 +6,48 @@ interface RecentOrdersTableProps {
 }
 
 export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
-  const [query, setQuery] = useState("");
-
-  const filteredOrders = useMemo(() => {
-    const normalizedQuery = query.toLowerCase().trim();
-    const activeOrders = orders.filter((order) => order.status !== "Cancelado");
-
-    if (!normalizedQuery) return activeOrders;
-
-    return activeOrders.filter((order) =>
-      `${order.id} ${order.customer} ${order.product} ${order.payment} ${order.status} ${order.channel}`
-        .toLowerCase()
-        .includes(normalizedQuery)
-    );
-  }, [orders, query]);
+  const recentOrders = orders
+    .filter((order) => order.status !== "Cancelado")
+    .slice(0, 5);
 
   return (
-    <article className="panel">
-      <div className="orders-toolbar">
-        <div className="panel-header compact-panel-header">
-          <div>
-            <h3>Pedidos recientes</h3>
-            <p>Control de pedidos normales, personalizados, pagos y estados.</p>
-          </div>
+    <article className="panel orders-card">
+      <div className="panel-header">
+        <div>
+          <h3>Pedidos recientes</h3>
+          <p>Ultimos pedidos registrados en el sistema</p>
         </div>
-        <input
-          className="search"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar pedido, cliente o estado..."
-          type="search"
-          value={query}
-        />
       </div>
 
-      {filteredOrders.length ? (
+      {recentOrders.length ? (
         <div className="table-wrap">
-          <table>
+          <table className="order-table">
             <thead>
               <tr>
                 <th>Pedido</th>
                 <th>Cliente</th>
                 <th>Producto</th>
-                <th>Prendas</th>
                 <th>Pago</th>
                 <th>Estado</th>
                 <th>Total</th>
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => (
+              {recentOrders.map((order) => (
                 <tr key={order.id}>
+                  <td><span className="order-id">{order.id}</span></td>
                   <td>
-                    <strong>{order.id}</strong>
-                    <small>{order.channel}</small>
+                    <div className="client-name">{order.customer}</div>
+                    <div className="client-channel">{order.channel}</div>
                   </td>
-                  <td>
-                    <strong>{order.customer}</strong>
-                    <small>{order.type}</small>
-                  </td>
-                  <td>
-                    <strong>{order.product}</strong>
-                    <small>Pedido {order.type.toLowerCase()}</small>
-                  </td>
-                  <td>
-                    <strong>{order.prendas}</strong>
-                    <small>{order.prendas === 1 ? "prenda" : "prendas"}</small>
-                  </td>
+                  <td>{order.product}</td>
                   <td>
                     <span className={`badge ${badgeClass(order.payment)}`}>{order.payment}</span>
                   </td>
                   <td>
                     <span className={`badge ${badgeClass(order.status)}`}>{order.status}</span>
                   </td>
-                  <td>
-                    <strong>{formatCurrency(order.total)}</strong>
-                  </td>
+                  <td className="total-cell">{formatCurrency(order.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -90,9 +56,13 @@ export function RecentOrdersTable({ orders }: RecentOrdersTableProps) {
       ) : (
         <div className="empty-state order-empty-state">
           <strong>Sin pedidos activos</strong>
-          <p>Los pedidos nuevos de Nachito Store apareceran aqui para seguimiento rapido.</p>
+          <p>Los pedidos nuevos de Nachito Store apareceran aqui.</p>
         </div>
       )}
+
+      <div className="card-footer">
+        <button className="link-btn" type="button">Ver todos los pedidos -&gt;</button>
+      </div>
     </article>
   );
 }
