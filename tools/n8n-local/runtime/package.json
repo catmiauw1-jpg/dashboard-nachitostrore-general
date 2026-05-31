@@ -1,0 +1,11 @@
+{
+  "name": "poleraflow-n8n-local",
+  "private": true,
+  "scripts": {
+    "start": "n8n start",
+    "start:tunnel": "n8n start --tunnel"
+  },
+  "dependencies": {
+    "n8n": "latest"
+  }
+}
