@@ -2,7 +2,11 @@ $ErrorActionPreference = "SilentlyContinue"
 
 $processes = Get-CimInstance Win32_Process |
   Where-Object {
-    $_.CommandLine -match "n8n start"
+    ($_.Name -in @("node.exe", "cmd.exe")) -and (
+      $_.CommandLine -match "n8n start" -or
+      $_.CommandLine -match "tools\\n8n-local\\runtime\\node_modules" -or
+      $_.CommandLine -match "n8n\\bin\\n8n"
+    )
   }
 
 if (-not $processes) {

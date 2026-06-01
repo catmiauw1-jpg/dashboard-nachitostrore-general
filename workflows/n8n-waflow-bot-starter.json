@@ -1,0 +1,125 @@
+{
+  "id": "poleraflow-waflow-bot-starter",
+  "name": "PoleraFlow Waflow Bot - Starter",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "poleraflow-waflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e26a6353-1441-4f41-b413-7d1554db8f01",
+      "name": "waflow-webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\nconst event = body.event ?? body.type ?? body.action ?? 'message';\nconst nestedMessage = body.message ?? body.data?.message ?? body.payload?.message ?? {};\nconst contact = body.contact ?? body.data?.contact ?? body.payload?.contact ?? {};\nconst text = String(\n  body.text ??\n  body.content ??\n  body.messageText ??\n  nestedMessage.text ??\n  nestedMessage.body ??\n  nestedMessage.content ??\n  body.data?.text ??\n  body.payload?.text ??\n  ''\n);\nconst phone = String(\n  body.phone ??\n  body.from ??\n  body.customerPhone ??\n  contact.phone ??\n  contact.whatsapp ??\n  contact.wa_id ??\n  nestedMessage.from ??\n  ''\n);\nconst customerName = String(\n  body.customerName ??\n  body.name ??\n  contact.name ??\n  contact.fullName ??\n  contact.profile?.name ??\n  'Cliente WhatsApp'\n);\nconst lower = text.toLowerCase();\nconst isCustom = lower.includes('personalizada') || lower.includes('personaliza') || lower.includes('cotizar');\nconst color = text.match(/color:\\s*([^.,\\n]+)/i)?.[1]?.trim();\nconst size = text.match(/talla:\\s*([^.,\\n]+)/i)?.[1]?.trim();\nconst quantity = Number(text.match(/(\\d+)\\s*prenda/i)?.[1] ?? body.quantity ?? 1);\nconst total = Number(text.match(/bs\\s*(\\d+(?:[.,]\\d+)?)/i)?.[1]?.replace(',', '.') ?? body.total ?? 0);\n\nreturn [{\n  json: {\n    waflowEvent: event,\n    rawText: text,\n    customerName,\n    customerPhone: phone,\n    messageType: nestedMessage.type ?? body.messageType ?? 'text',\n    receivedAt: new Date().toISOString(),\n    action: 'create_order',\n    type: isCustom ? 'custom' : 'catalog',\n    product: isCustom ? 'Polera personalizada' : 'Pedido catalogo',\n    color,\n    size,\n    quantity,\n    total,\n    notes: text,\n    designDetails: isCustom ? text : undefined,\n    quoteOption: text.match(/(solo\\s+[^.\\n]+|frente\\s+[^.\\n]+|espalda\\s+[^.\\n]+)/i)?.[1]?.trim(),\n    source: 'waflow'\n  }\n}];"
+      },
+      "id": "d9b3027e-3c39-4386-9d67-db77250ce54a",
+      "name": "Normalize Waflow Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.POLERAFLOW_WEBHOOK_URL || 'https://admin-dhasboard.vercel.app/api/webhooks/n8n/whatsapp' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-poleraflow-webhook-secret",
+              "value": "={{ $env.POLERAFLOW_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "ae7e5f46-d2f2-4013-9cc9-e1e917ffaf20",
+      "name": "Register Order in PoleraFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, orderId: $json.orderId, total: $json.total, replyText: $json.replyText } }}",
+        "options": {}
+      },
+      "id": "dc64b5bf-27ac-41d1-bbce-ec7718796c2c",
+      "name": "Respond to Waflow",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "waflow-webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Waflow Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Waflow Message": {
+      "main": [
+        [
+          {
+            "node": "Register Order in PoleraFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Order in PoleraFlow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Waflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

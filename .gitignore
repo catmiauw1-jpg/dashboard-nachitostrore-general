@@ -3,6 +3,7 @@ node_modules
 out
 dist
 .n8n-local
+.n8n-local.env
 tools/n8n-local/runtime/node_modules
 .env
 .env.local

@@ -8,6 +8,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Resolve-Path (Join-Path $scriptDir "..\..")
 $runtimeDir = Join-Path $scriptDir "runtime"
 $dataDir = Join-Path $projectRoot ".n8n-local"
+$localEnvFile = Join-Path $projectRoot ".n8n-local.env"
 $logDir = Join-Path $dataDir "logs"
 $logFile = Join-Path $logDir "n8n.log"
 $errorLogFile = Join-Path $logDir "n8n-error.log"
@@ -15,7 +16,21 @@ $n8nCmd = Join-Path $runtimeDir "node_modules\.bin\n8n.cmd"
 
 New-Item -ItemType Directory -Force -Path $dataDir, $logDir | Out-Null
 
-$existing = Get-NetTCPConnection -LocalPort 5678 -ErrorAction SilentlyContinue | Select-Object -First 1
+if (Test-Path $localEnvFile) {
+  Get-Content $localEnvFile | ForEach-Object {
+    $line = $_.Trim()
+    if (-not $line -or $line.StartsWith("#") -or -not $line.Contains("=")) {
+      return
+    }
+
+    $name, $value = $line.Split("=", 2)
+    [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), "Process")
+  }
+}
+
+$existing = Get-NetTCPConnection -LocalPort 5678 -ErrorAction SilentlyContinue |
+  Where-Object { $_.State -eq "Listen" } |
+  Select-Object -First 1
 if ($existing) {
   Write-Host "n8n parece estar abierto en http://127.0.0.1:5678"
   Write-Host "Proceso: $($existing.OwningProcess)"
@@ -63,7 +78,9 @@ $process = Start-Process `
 
 for ($i = 1; $i -le 90; $i++) {
   Start-Sleep -Seconds 2
-  $connection = Get-NetTCPConnection -LocalPort 5678 -ErrorAction SilentlyContinue | Select-Object -First 1
+  $connection = Get-NetTCPConnection -LocalPort 5678 -ErrorAction SilentlyContinue |
+    Where-Object { $_.State -eq "Listen" } |
+    Select-Object -First 1
   if ($connection) {
     Write-Host "n8n listo: http://127.0.0.1:5678"
     Write-Host "Proceso: $($process.Id)"

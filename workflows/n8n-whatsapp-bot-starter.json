@@ -1,8 +1,10 @@
 {
+  "id": "poleraflow-whatsapp-bot-starter",
   "name": "PoleraFlow WhatsApp Bot - Starter",
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "poleraflow-whatsapp",
         "responseMode": "responseNode",
         "options": {}
@@ -42,7 +44,7 @@
             },
             {
               "name": "x-poleraflow-webhook-secret",
-              "value": "CAMBIA_ESTO_POR_TU_N8N_WEBHOOK_SECRET"
+              "value": "={{ $env.POLERAFLOW_WEBHOOK_SECRET }}"
             }
           ]
         },
