@@ -269,7 +269,7 @@ function looksLikeWebOrderMessage(text: string) {
 }
 
 function buildStartOnWebsiteReply(customerName: string) {
-  return `Hola ${customerName}, soy el asistente de Nachito Store.\n\nPara atenderte bien y no perder datos, primero haz tu pedido desde la pagina web:\n${nachitoStoreUrl}\n\nAhi puedes escoger una polera del catalogo o cotizar una personalizada. Cuando envies el pedido desde la web, seguimos por este WhatsApp.\n\nSi prefieres que te atienda una persona, responde HUMANO.`;
+  return `Hola ${customerName}, soy el asistente de Nachito Store.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\n\nDesde ahi eliges catalogo o personalizada.\n\nSi quieres una persona, responde HUMANO.`;
 }
 
 function wantsHumanHelp(text: string) {
@@ -277,11 +277,19 @@ function wantsHumanHelp(text: string) {
 }
 
 function buildHumanHandoffReply(customerName: string) {
-  return `Listo ${customerName}, te paso con una persona de Nachito Store.\n\nDejo este chat marcado para atencion manual. Si ya tienes un pedido, no te preocupes: queda registrado para revisarlo y responderte desde aqui.`;
+  return `Listo ${customerName}, te paso con una persona.\n\nDejo este chat en atencion manual.`;
 }
 
 function humanHelpHint() {
-  return "\n\nSi en cualquier momento prefieres que te atienda una persona, responde HUMANO.";
+  return "\n\nPara hablar con una persona, responde HUMANO.";
+}
+
+function splitReplyMessages(replyText: string) {
+  return replyText
+    .split(/\n{2,}/)
+    .map((message) => message.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function nextBotState(state: BotState, text: string, customerName: string, messageType: string) {
@@ -355,7 +363,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   if (cancelsOrder) {
     return {
       state: initialState(),
-      replyText: `Entendido ${customerName}, cancelamos este flujo.\n\nSi quieres empezar de nuevo, vuelve a enviar tu pedido desde la web de Nachito Store o responde HUMANO para que una persona te ayude.`,
+      replyText: `Entendido ${customerName}, cancelamos este flujo.\n\nPara empezar de nuevo, envia tu pedido desde la web.\n\nSi necesitas ayuda, responde HUMANO.`,
       needsHuman: false
     };
   }
@@ -372,14 +380,14 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
 
   if ((state.stage === "esperando_comprobante" && !isTextLike) || hasPaymentProofWords) {
     nextState = { ...nextState, stage: "comprobante_recibido" };
-    replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision para confirmar el pago. Apenas se valide, tu pedido pasa a preparacion.`;
+    replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision.\n\nCuando se confirme, tu pedido pasa a preparacion.`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
   }
 
   if (!isTextLike) {
     nextState = { ...nextState, stage: "atencion_manual" };
-    replyText = `Recibi tu archivo, ${customerName}.\n\nLo dejo para revision manual, asi podemos verlo bien y ayudarte con tu pedido.`;
+    replyText = `Recibi tu archivo, ${customerName}.\n\nLo dejo para revision manual.`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
   }
@@ -393,13 +401,13 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
 
   if (state.stage === "esperando_confirmacion" && state.order) {
     if (!confirmsOrder) {
-      replyText = `Antes de avanzar quiero confirmar que todo este bien:\n\n${buildSummary(state.order)}\n\nResponde SI para confirmar o NO para cancelar.${humanHelpHint()}`;
+      replyText = `Confirma si todo esta bien:\n\n${buildSummary(state.order)}\n\nResponde SI para confirmar o NO para cancelar.${humanHelpHint()}`;
       return { state: nextState, replyText, needsHuman };
     }
 
     nextState = { ...nextState, stage: "esperando_tipo_pago" };
     const half = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
-    replyText = `Genial, pedido confirmado.\n\nComo prefieres pagar?\n\n- Responde 50% para adelantar ${half} Bs\n- Responde COMPLETO para pagar ${state.order.total} Bs${humanHelpHint()}`;
+    replyText = `Pedido confirmado.\n\nComo prefieres pagar?\n\n50%: ${half} Bs\nCOMPLETO: ${state.order.total} Bs${humanHelpHint()}`;
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -407,8 +415,8 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     const paymentAmount = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "50%", paymentAmount };
     replyText = paymentAmount
-      ? `Perfecto. Para reservar tu pedido seria el 50%: ${paymentAmount} Bs.\n\nPor ahora el QR se confirma manualmente. Te dejare el pedido marcado para que una persona revise el cobro y te pase el QR si hace falta.\n\nCuando pagues, envia aqui la foto del comprobante.`
-      : `Perfecto, registramos que quieres pagar el 50%. Primero revisamos el monto exacto y luego te pasamos el QR.${humanHelpHint()}`;
+      ? `Perfecto. El adelanto es ${paymentAmount} Bs.\n\nTe pasaremos el QR para pagar.\n\nCuando pagues, envia el comprobante.`
+      : `Perfecto. Revisamos el monto y te pasamos el QR.${humanHelpHint()}`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
   }
@@ -417,14 +425,14 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     const paymentAmount = state.order.total ? safeMoney(state.order.total) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "completo", paymentAmount };
     replyText = paymentAmount
-      ? `Perfecto. El pago completo es ${paymentAmount} Bs.\n\nPor ahora el QR se confirma manualmente. Te dejare el pedido marcado para que una persona revise el cobro y te pase el QR si hace falta.\n\nCuando pagues, envia aqui la foto del comprobante.`
-      : `Perfecto, registramos que quieres pagar completo. Primero revisamos el monto exacto y luego te pasamos el QR.${humanHelpHint()}`;
+      ? `Perfecto. El total es ${paymentAmount} Bs.\n\nTe pasaremos el QR para pagar.\n\nCuando pagues, envia el comprobante.`
+      : `Perfecto. Revisamos el monto y te pasamos el QR.${humanHelpHint()}`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
   }
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
-    replyText = `Para avanzar responde 50% si quieres adelantar la mitad, o COMPLETO si quieres pagar todo el pedido.${humanHelpHint()}`;
+    replyText = `Responde 50% o COMPLETO para seguir.${humanHelpHint()}`;
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -433,12 +441,12 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
 
   if (missing.length) {
     nextState = { ...nextState, stage: "faltan_datos", order };
-    replyText = `Hola ${customerName}, ya recibi tu mensaje.\n\nPara dejar bien armado el pedido me falta: ${missing.join(", ")}.\n\nResponde esos datos por aqui y te confirmo el resumen.${humanHelpHint()}`;
+    replyText = `Ya recibi tu mensaje, ${customerName}.\n\nMe falta: ${missing.join(", ")}.\n\nResponde esos datos para continuar.${humanHelpHint()}`;
     return { state: nextState, replyText, needsHuman };
   }
 
   nextState = { ...nextState, stage: "esperando_confirmacion", order };
-  replyText = `Hola ${customerName}, ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmamos el pedido? Responde SI para confirmar o NO para cancelar.${humanHelpHint()}`;
+  replyText = `Ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmas? Responde SI o NO.${humanHelpHint()}`;
 
   return { state: nextState, replyText, needsHuman };
 }
@@ -521,6 +529,7 @@ export async function POST(request: Request) {
 
     const currentState = ((latestStateMessage?.metadata as { botState?: BotState } | null)?.botState ?? initialState()) as BotState;
     const { state, replyText, needsHuman, botActive } = nextBotStateV2(currentState, text, name, messageType);
+    const replyMessages = splitReplyMessages(replyText);
 
     await supabase.from("messages").insert({
       conversation_id: conversation.id,
@@ -555,6 +564,7 @@ export async function POST(request: Request) {
         stage: state.stage,
         conversationId: conversation.id,
         order: state.order ?? null,
+        replyMessages,
         replyTargetPhone: phone,
         ...waflowContext,
         paymentChoice: state.paymentChoice,
