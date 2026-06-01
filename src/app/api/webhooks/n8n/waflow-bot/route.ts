@@ -3,6 +3,7 @@ import { requireSupabaseAdminClient } from "@/lib/supabase";
 import { RequestSecurityError, assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
 
 const maxBotBodyBytes = 1024 * 1024;
+const nachitoStoreUrl = process.env.NACHITO_STORE_URL ?? "https://nachitostore.vercel.app";
 
 type BotStage =
   | "nuevo"
@@ -229,6 +230,16 @@ function isTextLikeMessage(messageType: string, text: string) {
   return Boolean(text) || ["text", "conversation", "extendedtextmessage", "extended_text", "message"].includes(normalizedType);
 }
 
+function looksLikeWebOrderMessage(text: string) {
+  return /quiero hacer este pedido|total estimado|cliente:|whatsapp:|quiero cotizar una polera personalizada|color:|talla:|subir referencias|\d+\s*x\s+.+\(.+talla.+\)\s*-\s*bs/i.test(
+    text
+  );
+}
+
+function buildStartOnWebsiteReply(customerName: string) {
+  return `Hola ${customerName}. Para atender tu pedido bien y no perder datos, primero tienes que hacerlo desde la pagina web de Nachito Store.\n\nEntra aqui:\n${nachitoStoreUrl}\n\nDesde ahi puedes escoger una polera del catalogo o cotizar una personalizada. Cuando envies el pedido desde la web, continuamos por WhatsApp.`;
+}
+
 function nextBotState(state: BotState, text: string, customerName: string, messageType: string) {
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
@@ -351,6 +362,11 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
     replyText = "Para avanzar responde 50% si quieres adelantar la mitad, o completo si quieres pagar todo el pedido.";
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if (!state.order && !looksLikeWebOrderMessage(text)) {
+    replyText = buildStartOnWebsiteReply(customerName);
     return { state: nextState, replyText, needsHuman };
   }
 
