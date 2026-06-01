@@ -292,6 +292,10 @@ function splitReplyMessages(replyText: string) {
     .slice(0, 8);
 }
 
+function recentDuplicateWindow() {
+  return new Date(Date.now() - 12_000).toISOString();
+}
+
 function nextBotState(state: BotState, text: string, customerName: string, messageType: string) {
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
@@ -501,10 +505,31 @@ export async function POST(request: Request) {
       conversation = createdConversation;
     }
 
+    const inboundBody = text || `[${messageType}]`;
+    const { data: duplicateInbound, error: duplicateInboundError } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("conversation_id", conversation.id)
+      .eq("direction", "inbound")
+      .eq("source", "waflow")
+      .eq("body", inboundBody)
+      .gte("created_at", recentDuplicateWindow())
+      .limit(1)
+      .maybeSingle();
+
+    if (duplicateInboundError) throw duplicateInboundError;
+
+    if (duplicateInbound) {
+      return NextResponse.json(
+        { ok: true, replyText: "", replyMessages: [], stage: conversation.status, duplicate: true, needsHuman: false },
+        { headers: secureJsonHeaders(request) }
+      );
+    }
+
     await supabase.from("messages").insert({
       conversation_id: conversation.id,
       direction: fromMe ? "outbound" : "inbound",
-      body: text || `[${messageType}]`,
+      body: inboundBody,
       source: "waflow",
       metadata: { raw: payload }
     });
