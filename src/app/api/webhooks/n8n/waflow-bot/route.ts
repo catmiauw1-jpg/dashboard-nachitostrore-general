@@ -7,9 +7,11 @@ const maxBotBodyBytes = 1024 * 1024;
 type BotStage =
   | "nuevo"
   | "faltan_datos"
+  | "esperando_confirmacion"
   | "esperando_tipo_pago"
   | "esperando_comprobante"
-  | "comprobante_recibido";
+  | "comprobante_recibido"
+  | "atencion_manual";
 
 interface BotOrder {
   id: string;
@@ -146,7 +148,7 @@ function parseTotal(text: string) {
 }
 
 function parseQuantity(text: string) {
-  const explicit = text.match(/(\d+)\s*(?:prenda|polera|unidad|u\b)/i)?.[1];
+  const explicit = text.match(/(\d+)\s*x\s+/i)?.[1] ?? text.match(/(\d+)\s*(?:prenda|polera|unidad|u\b)/i)?.[1];
   const quantity = Number(explicit ?? 1);
   return Math.min(Math.max(1, Number.isFinite(quantity) ? Math.round(quantity) : 1), 20);
 }
@@ -155,25 +157,40 @@ function createOrderId() {
   return `BOT-${Date.now().toString().slice(-8)}`;
 }
 
+function parseCatalogLine(text: string) {
+  const match = text.match(/(\d+)\s*x\s+(.+?)\s*\(([^,()]+),\s*talla\s+([^)]+)\)\s*-\s*bs\s*(\d+(?:[.,]\d+)?)/i);
+  if (!match) return null;
+
+  return {
+    quantity: Math.min(Math.max(1, Number(match[1]) || 1), 20),
+    product: cleanText(match[2], 120),
+    color: titleCase(match[3]),
+    size: cleanText(match[4], 20).toUpperCase(),
+    unitPrice: safeMoney(match[5].replace(",", "."))
+  };
+}
+
 function parseOrder(text: string, current?: BotOrder): BotOrder {
+  const catalogLine = parseCatalogLine(text);
   const isCustom = /personaliz|cotizar|disen|diseñ|referencia|frente|espalda/i.test(text);
-  const color = titleCase(text.match(/color:\s*([^.,\n]+)/i)?.[1] ?? text.match(/\b(blanco arena|negro)\b/i)?.[1]);
+  const color = catalogLine?.color ?? titleCase(text.match(/color:\s*([^.,\n]+)/i)?.[1] ?? text.match(/\b(blanco arena|negro)\b/i)?.[1]);
   const size =
-    cleanText(text.match(/talla:\s*([a-z0-9]+)/i)?.[1] ?? text.match(/\btalla\s*([a-z0-9]+)/i)?.[1], 20).toUpperCase() ||
-    undefined;
+    catalogLine?.size ??
+    (cleanText(text.match(/talla:\s*([a-z0-9]+)/i)?.[1] ?? text.match(/\btalla\s*([a-z0-9]+)/i)?.[1], 20).toUpperCase() ||
+      undefined);
   const total = parseTotal(text);
-  const quantity = parseQuantity(text);
+  const quantity = catalogLine?.quantity ?? parseQuantity(text);
   const quoteOption = titleCase(text.match(/(solo\s+[^.\n]+|frente\s+[^.\n]+|espalda\s+[^.\n]+)/i)?.[1]);
   const productFromText = cleanText(text.match(/(?:producto|prenda):\s*([^.,\n]+)/i)?.[1], 120);
 
   return {
     id: current?.id ?? createOrderId(),
     type: isCustom ? "personalizada" : "catalogo",
-    product: productFromText || (isCustom ? "Polera personalizada" : "Pedido de catalogo"),
+    product: catalogLine?.product || productFromText || current?.product || (isCustom ? "Polera personalizada" : "Pedido de catalogo"),
     color: color ?? current?.color,
     size: size ?? current?.size,
     quantity: quantity || current?.quantity || 1,
-    total: total || current?.total || 0,
+    total: total || (catalogLine ? safeMoney(catalogLine.unitPrice * catalogLine.quantity) : 0) || current?.total || 0,
     quoteOption: quoteOption ?? current?.quoteOption,
     details: text || current?.details || ""
   };
@@ -207,16 +224,25 @@ function initialState(): BotState {
   return { stage: "nuevo" };
 }
 
+function isTextLikeMessage(messageType: string, text: string) {
+  const normalizedType = messageType.toLowerCase();
+  return Boolean(text) || ["text", "conversation", "extendedtextmessage", "extended_text", "message"].includes(normalizedType);
+}
+
 function nextBotState(state: BotState, text: string, customerName: string, messageType: string) {
   const lower = text.toLowerCase();
+  const isTextLike = isTextLikeMessage(messageType, text);
+  const hasPaymentProofWords = /comprobante|pagad|pagu[eÃ©]|transfer|deposit/i.test(lower);
+  const confirmsOrder = /^(si|s[iÃ­]|confirmo|confirmar|ok|dale|listo|perfecto|de acuerdo|adelante)$/i.test(lower.trim());
+  const cancelsOrder = /^(no|cancelar|salir|reiniciar|empezar de nuevo|mejor no)$/i.test(lower.trim());
   let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
   let replyText = "";
   let needsHuman = false;
 
-  if (/^(cancelar|salir|reiniciar|empezar de nuevo)$/i.test(lower)) {
+  if (cancelsOrder) {
     return {
       state: initialState(),
-      replyText: "Listo, reinicie tu pedido. Cuando quieras, vuelve a enviar tu pedido desde la web o escribe lo que necesitas.",
+      replyText: "Entendido, cancelamos el pedido. Si quieres retomarlo, vuelve a enviar tu pedido desde la web o escribe lo que necesitas.",
       needsHuman: false
     };
   }
@@ -257,6 +283,88 @@ function nextBotState(state: BotState, text: string, customerName: string, messa
 
   nextState = { ...nextState, stage: "esperando_tipo_pago", order };
   replyText = `Hola ${customerName}, ya tengo tu pedido:\n\n${buildSummary(order)}\n\nPara avanzar puedes pagar el 50% de adelanto o el pago completo. Responde: 50% o completo.`;
+
+  return { state: nextState, replyText, needsHuman };
+}
+
+function nextBotStateV2(state: BotState, text: string, customerName: string, messageType: string) {
+  const lower = text.toLowerCase();
+  const isTextLike = isTextLikeMessage(messageType, text);
+  const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
+  const confirmsOrder = /^(si|confirmo|confirmar|ok|dale|listo|perfecto|de acuerdo|adelante)$/i.test(lower.trim());
+  const cancelsOrder = /^(no|cancelar|salir|reiniciar|empezar de nuevo|mejor no)$/i.test(lower.trim());
+  let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
+  let replyText = "";
+  let needsHuman = false;
+
+  if (cancelsOrder) {
+    return {
+      state: initialState(),
+      replyText: "Entendido, cancelamos el pedido. Si quieres retomarlo, vuelve a enviar tu pedido desde la web o escribe lo que necesitas.",
+      needsHuman: false
+    };
+  }
+
+  if ((state.stage === "esperando_comprobante" && !isTextLike) || hasPaymentProofWords) {
+    nextState = { ...nextState, stage: "comprobante_recibido" };
+    replyText = `Recibi tu comprobante, ${customerName}. Lo voy a dejar para revision manual. Apenas se confirme el pago, empezamos con la preparacion de tu polera.`;
+    needsHuman = true;
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if (!isTextLike) {
+    nextState = { ...nextState, stage: "atencion_manual" };
+    replyText = `Recibi tu archivo, ${customerName}. Lo voy a pasar a revision manual para ayudarte mejor.`;
+    needsHuman = true;
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if (state.stage === "esperando_confirmacion" && state.order) {
+    if (!confirmsOrder) {
+      replyText = `Para avanzar necesito que confirmes el pedido.\n\n${buildSummary(state.order)}\n\nResponde si para confirmar o no para cancelar.`;
+      return { state: nextState, replyText, needsHuman };
+    }
+
+    nextState = { ...nextState, stage: "esperando_tipo_pago" };
+    const half = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
+    replyText = `Genial, pedido confirmado.\n\nComo prefieres pagar?\n\n- Responde 50% para adelantar ${half} Bs\n- Responde completo para pagar ${state.order.total} Bs`;
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if (/(^|\s)(50%?|mitad|adelanto)(\s|$)/i.test(lower) && state.order) {
+    const paymentAmount = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
+    nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "50%", paymentAmount };
+    replyText = paymentAmount
+      ? `Perfecto. Para reservar tu pedido paga el 50%: ${paymentAmount} Bs.\n\nTe mando el QR de pago de Nachito Store. Cuando pagues, envia aqui la foto del comprobante para revisarlo.`
+      : "Perfecto, registramos pago del 50%. Primero confirmare el monto exacto y luego te envio el QR de pago.";
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if (/(completo|todo|100%?|total)/i.test(lower) && state.order) {
+    const paymentAmount = state.order.total ? safeMoney(state.order.total) : 0;
+    nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "completo", paymentAmount };
+    replyText = paymentAmount
+      ? `Perfecto. El pago completo es ${paymentAmount} Bs.\n\nTe mando el QR de pago de Nachito Store. Cuando pagues, envia aqui la foto del comprobante para revisarlo.`
+      : "Perfecto, registramos pago completo. Primero confirmare el monto exacto y luego te envio el QR de pago.";
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if (state.stage === "esperando_tipo_pago" && state.order) {
+    replyText = "Para avanzar responde 50% si quieres adelantar la mitad, o completo si quieres pagar todo el pedido.";
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  const order = parseOrder(text, state.order);
+  const missing = missingFields(order);
+
+  if (missing.length) {
+    nextState = { ...nextState, stage: "faltan_datos", order };
+    replyText = `Hola ${customerName}, recibi tu mensaje. Para continuar me falta: ${missing.join(", ")}.\n\nResponde esos datos por aqui y te confirmo el resumen del pedido.`;
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  nextState = { ...nextState, stage: "esperando_confirmacion", order };
+  replyText = `Hola ${customerName}, ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmamos el pedido? Responde si para confirmar o no para cancelar.`;
 
   return { state: nextState, replyText, needsHuman };
 }
@@ -337,7 +445,7 @@ export async function POST(request: Request) {
     if (latestStateError) throw latestStateError;
 
     const currentState = ((latestStateMessage?.metadata as { botState?: BotState } | null)?.botState ?? initialState()) as BotState;
-    const { state, replyText, needsHuman } = nextBotState(currentState, text, name, messageType);
+    const { state, replyText, needsHuman } = nextBotStateV2(currentState, text, name, messageType);
 
     await supabase.from("messages").insert({
       conversation_id: conversation.id,
@@ -366,6 +474,7 @@ export async function POST(request: Request) {
         stage: state.stage,
         conversationId: conversation.id,
         order: state.order ?? null,
+        replyTargetPhone: phone,
         paymentChoice: state.paymentChoice,
         paymentAmount: state.paymentAmount,
         needsHuman
