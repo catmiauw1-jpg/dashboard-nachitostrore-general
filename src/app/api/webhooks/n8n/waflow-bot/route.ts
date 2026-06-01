@@ -46,6 +46,14 @@ interface WaflowPayload {
   fromMe?: boolean;
   messageType?: string;
   type?: string;
+  agencyId?: string;
+  locationId?: string;
+  slot?: {
+    id?: string;
+    slotId?: string;
+    name?: string;
+    phone?: string;
+  };
   contact?: {
     id?: string;
     name?: string;
@@ -66,11 +74,17 @@ interface WaflowPayload {
     fromMe?: boolean;
   };
   data?: {
+    agencyId?: string;
+    locationId?: string;
+    slot?: WaflowPayload["slot"];
     text?: string;
     contact?: WaflowPayload["contact"];
     message?: WaflowPayload["message"];
   };
   payload?: {
+    agencyId?: string;
+    locationId?: string;
+    slot?: WaflowPayload["slot"];
     text?: string;
     contact?: WaflowPayload["contact"];
     message?: WaflowPayload["message"];
@@ -141,6 +155,17 @@ function parseContact(payload: WaflowPayload) {
     "Cliente WhatsApp";
 
   return { name, phone };
+}
+
+function parseWaflowContext(payload: WaflowPayload) {
+  const contact = payload.contact ?? payload.data?.contact ?? payload.payload?.contact ?? {};
+  const slot = payload.slot ?? payload.data?.slot ?? payload.payload?.slot ?? {};
+
+  return {
+    waflowContactId: cleanText(contact.id, 80) || undefined,
+    waflowLocationId: cleanText(payload.locationId ?? payload.data?.locationId ?? payload.payload?.locationId, 120) || undefined,
+    waflowSlotId: cleanText(slot.id ?? slot.slotId, 40) || undefined
+  };
 }
 
 function parseTotal(text: string) {
@@ -330,6 +355,13 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     return { state: nextState, replyText, needsHuman };
   }
 
+  const stateStartedFromWeb = Boolean(state.order?.details && looksLikeWebOrderMessage(state.order.details));
+  if (!looksLikeWebOrderMessage(text) && (!state.order || !stateStartedFromWeb)) {
+    nextState = { stage: "nuevo", updatedAt: new Date().toISOString() };
+    replyText = buildStartOnWebsiteReply(customerName);
+    return { state: nextState, replyText, needsHuman };
+  }
+
   if (state.stage === "esperando_confirmacion" && state.order) {
     if (!confirmsOrder) {
       replyText = `Para avanzar necesito que confirmes el pedido.\n\n${buildSummary(state.order)}\n\nResponde si para confirmar o no para cancelar.`;
@@ -365,11 +397,6 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     return { state: nextState, replyText, needsHuman };
   }
 
-  if (!state.order && !looksLikeWebOrderMessage(text)) {
-    replyText = buildStartOnWebsiteReply(customerName);
-    return { state: nextState, replyText, needsHuman };
-  }
-
   const order = parseOrder(text, state.order);
   const missing = missingFields(order);
 
@@ -402,6 +429,7 @@ export async function POST(request: Request) {
     const messageType = cleanText(payload.message?.type ?? payload.data?.message?.type ?? payload.messageType ?? payload.type, 40) || "text";
     const fromMe = Boolean(payload.message?.fromMe ?? payload.data?.message?.fromMe ?? payload.fromMe);
     const { name, phone } = parseContact(payload);
+    const waflowContext = parseWaflowContext(payload);
 
     if (!phone) {
       throw new RequestSecurityError("Falta telefono del cliente.", 400);
@@ -491,6 +519,7 @@ export async function POST(request: Request) {
         conversationId: conversation.id,
         order: state.order ?? null,
         replyTargetPhone: phone,
+        ...waflowContext,
         paymentChoice: state.paymentChoice,
         paymentAmount: state.paymentAmount,
         needsHuman

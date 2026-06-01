@@ -52,8 +52,133 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "https://wa.waflow.ai/agency/locations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.WAFLOW_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6a871f02-a070-4db1-92e5-76237c352ac3",
+      "name": "Get Waflow Locations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const bot = $('Run Bot in PoleraFlow').first().json;\nconst locations = $input.all().map((item) => item.json);\nconst location = locations.find((entry) => entry.location_id === bot.waflowLocationId) || locations[0];\nconst settings = location?.settings || {};\nconst chatwootBaseUrl = String(settings.chatwoot_url || 'https://chatwoot.waflow.ai').replace(/\\/$/, '');\nconst chatwootAccountId = settings.chatwoot_account_id;\nconst chatwootToken = settings.chatwoot_api_token;\nconst chatwootContactId = String(bot.waflowContactId || '').trim();\n\nif (!bot.replyText) {\n  return [{ json: { ...bot, chatwootReplySent: false, chatwootSkipReason: 'empty replyText' } }];\n}\n\nif (!chatwootAccountId || !chatwootToken || !chatwootContactId) {\n  throw new Error('Faltan datos de Chatwoot/WaFloW para enviar la respuesta.');\n}\n\nreturn [{\n  json: {\n    ...bot,\n    chatwootReplySent: false,\n    chatwootBaseUrl,\n    chatwootAccountId,\n    chatwootToken,\n    chatwootContactId\n  }\n}];"
+      },
+      "id": "da6a52cb-925e-49c9-b2b8-42b75a13e900",
+      "name": "Prepare Chatwoot Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.chatwootBaseUrl + '/api/v1/accounts/' + $json.chatwootAccountId + '/contacts/' + $json.chatwootContactId + '/conversations' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $json.chatwootToken }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ec257b78-c31c-4d05-99cc-535ff33b8bfb",
+      "name": "Get Chatwoot Conversations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const reply = $('Prepare Chatwoot Reply').first().json;\nconst first = $input.first().json;\nconst conversations = Array.isArray(first?.payload) ? first.payload : $input.all().map((item) => item.json);\nconst conversation = conversations[0];\n\nif (!conversation?.id) {\n  throw new Error('No encontre conversacion de Chatwoot para este contacto.');\n}\n\nreturn [{ json: { ...reply, chatwootConversationId: conversation.id } }];"
+      },
+      "id": "5ca5daa6-3957-4544-89a9-cd2e544fe97c",
+      "name": "Pick Chatwoot Conversation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.chatwootBaseUrl + '/api/v1/accounts/' + $json.chatwootAccountId + '/conversations/' + $json.chatwootConversationId + '/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $json.chatwootToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.replyText, message_type: 'outgoing', private: false, content_type: 'text' } }}",
+        "options": {}
+      },
+      "id": "4438b42b-9769-4c8e-a66c-c5482b8a8c19",
+      "name": "Send Chatwoot Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const reply = $('Pick Chatwoot Conversation').first().json;\nconst sent = $input.first().json;\nconst { chatwootToken, chatwootBaseUrl, chatwootAccountId, chatwootContactId, ...safeReply } = reply;\n\nreturn [{\n  json: {\n    ...safeReply,\n    chatwootReplySent: true,\n    chatwootMessageId: sent?.id || sent?.payload?.id || null\n  }\n}];"
+      },
+      "id": "e57550a3-003e-48f9-bce5-178cb2b41bb9",
+      "name": "Finalize Waflow Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: $json.ok, replyText: $json.replyText, stage: $json.stage, conversationId: $json.conversationId, order: $json.order, paymentChoice: $json.paymentChoice, paymentAmount: $json.paymentAmount, needsHuman: $json.needsHuman } }}",
+        "responseBody": "={{ { ok: $json.ok, replyText: $json.replyText, stage: $json.stage, conversationId: $json.conversationId, order: $json.order, paymentChoice: $json.paymentChoice, paymentAmount: $json.paymentAmount, needsHuman: $json.needsHuman, chatwootReplySent: $json.chatwootReplySent, chatwootConversationId: $json.chatwootConversationId, chatwootMessageId: $json.chatwootMessageId } }}",
         "options": {}
       },
       "id": "dc64b5bf-27ac-41d1-bbce-ec7718796c2c",
@@ -61,7 +186,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        -60,
+        1620,
         0
       ]
     }
@@ -79,6 +204,72 @@
       ]
     },
     "Run Bot in PoleraFlow": {
+      "main": [
+        [
+          {
+            "node": "Get Waflow Locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Waflow Locations": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chatwoot Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chatwoot Reply": {
+      "main": [
+        [
+          {
+            "node": "Get Chatwoot Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Chatwoot Conversations": {
+      "main": [
+        [
+          {
+            "node": "Pick Chatwoot Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Chatwoot Conversation": {
+      "main": [
+        [
+          {
+            "node": "Send Chatwoot Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Chatwoot Message": {
+      "main": [
+        [
+          {
+            "node": "Finalize Waflow Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Waflow Response": {
       "main": [
         [
           {
