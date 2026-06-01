@@ -53,6 +53,8 @@ interface WaflowPayload {
   fromMe?: boolean;
   messageType?: string;
   type?: string;
+  event?: string;
+  timestamp?: string | number;
   agencyId?: string;
   locationId?: string;
   slot?: {
@@ -79,6 +81,8 @@ interface WaflowPayload {
     type?: string;
     from?: string;
     fromMe?: boolean;
+    direction?: string;
+    timestamp?: string | number;
   };
   data?: {
     agencyId?: string;
@@ -144,8 +148,12 @@ function parseText(payload: WaflowPayload) {
   ).replace(/\s+/g, " ");
 }
 
+function parseMessage(payload: WaflowPayload) {
+  return payload.message ?? payload.data?.message ?? payload.payload?.message ?? {};
+}
+
 function parseContact(payload: WaflowPayload) {
-  const message = payload.message ?? payload.data?.message ?? payload.payload?.message ?? {};
+  const message = parseMessage(payload);
   const contact = payload.contact ?? payload.data?.contact ?? payload.payload?.contact ?? {};
   const phone = normalizePhone(
     payload.phone ??
@@ -269,7 +277,7 @@ function looksLikeWebOrderMessage(text: string) {
 }
 
 function buildStartOnWebsiteReply(customerName: string) {
-  return `Hola ${customerName}, soy el asistente de Nachito Store.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\n\nDesde ahi eliges catalogo o personalizada.\n\nSi quieres una persona, responde HUMANO.`;
+  return `Hola ${customerName}, soy el asistente de Nachito Store.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\nAhi eliges catalogo o personalizada.`;
 }
 
 function wantsHumanHelp(text: string) {
@@ -277,11 +285,11 @@ function wantsHumanHelp(text: string) {
 }
 
 function buildHumanHandoffReply(customerName: string) {
-  return `Listo ${customerName}, te paso con una persona.\n\nDejo este chat en atencion manual.`;
+  return `Listo ${customerName}, te paso con una persona de Nachito Store.`;
 }
 
 function humanHelpHint() {
-  return "\n\nPara hablar con una persona, responde HUMANO.";
+  return "";
 }
 
 function splitReplyMessages(replyText: string) {
@@ -294,6 +302,43 @@ function splitReplyMessages(replyText: string) {
 
 function recentDuplicateWindow() {
   return new Date(Date.now() - 12_000).toISOString();
+}
+
+function stableHash(value: string) {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+
+  return (hash >>> 0).toString(16);
+}
+
+function isOutboundProviderMessage(payload: WaflowPayload) {
+  const message = parseMessage(payload);
+  const direction = cleanText(
+    payload.message?.direction ?? payload.data?.message?.direction ?? payload.payload?.message?.direction,
+    40
+  ).toLowerCase();
+  const event = cleanText(payload.event, 120).toLowerCase();
+
+  return Boolean(
+    payload.message?.fromMe ??
+      payload.data?.message?.fromMe ??
+      payload.payload?.message?.fromMe ??
+      payload.fromMe ??
+      false
+  ) || ["outbound", "outgoing", "sent"].includes(direction) || event.includes("outbound") || event.includes("sent");
+}
+
+function buildWebhookEventKey(payload: WaflowPayload, phone: string, text: string, messageType: string) {
+  const message = parseMessage(payload);
+  const timestamp = cleanText(message.timestamp ?? payload.timestamp, 60);
+  const direction = cleanText(message.direction, 40).toLowerCase() || "inbound";
+  const slotId = cleanText(payload.slot?.id ?? payload.data?.slot?.id ?? payload.payload?.slot?.id, 60);
+  const event = cleanText(payload.event, 120).toLowerCase() || "waflow";
+  const body = `${event}|${slotId}|${phone}|${direction}|${timestamp}|${messageType}|${text.toLowerCase()}`;
+
+  return `waflow:${stableHash(body)}`;
 }
 
 function nextBotState(state: BotState, text: string, customerName: string, messageType: string) {
@@ -470,7 +515,7 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as WaflowPayload;
     const text = parseText(payload);
     const messageType = cleanText(payload.message?.type ?? payload.data?.message?.type ?? payload.messageType ?? payload.type, 40) || "text";
-    const fromMe = Boolean(payload.message?.fromMe ?? payload.data?.message?.fromMe ?? payload.fromMe);
+    const fromMe = isOutboundProviderMessage(payload);
     const { name, phone } = parseContact(payload);
     const waflowContext = parseWaflowContext(payload);
 
@@ -479,6 +524,22 @@ export async function POST(request: Request) {
     }
 
     const supabase = requireSupabaseAdminClient();
+    const inboundBody = text || `[${messageType}]`;
+    const eventKey = buildWebhookEventKey(payload, phone, inboundBody, messageType);
+    const { error: eventInsertError } = await supabase.from("webhook_events").insert({
+      event_key: eventKey,
+      provider: "waflow"
+    });
+
+    if (eventInsertError?.code === "23505") {
+      return NextResponse.json(
+        { ok: true, replyText: "", replyMessages: [], duplicate: true, needsHuman: false },
+        { headers: secureJsonHeaders(request) }
+      );
+    }
+
+    if (eventInsertError) throw eventInsertError;
+
     const { data: existingConversation, error: readConversationError } = await supabase
       .from("conversations")
       .select("id, customer_name, phone, bot_active, status")
@@ -505,7 +566,6 @@ export async function POST(request: Request) {
       conversation = createdConversation;
     }
 
-    const inboundBody = text || `[${messageType}]`;
     const { data: duplicateInbound, error: duplicateInboundError } = await supabase
       .from("messages")
       .select("id")
