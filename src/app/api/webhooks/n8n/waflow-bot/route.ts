@@ -342,7 +342,7 @@ function isFreshWebOrderMessage(text: string, state: BotState) {
 }
 
 function buildStartOnWebsiteReply(customerName: string) {
-  return `Hola ${customerName}.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\n\nAhi eliges catalogo o personalizada.`;
+  return `Hola ${customerName}.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\nAhi eliges catalogo o personalizada.`;
 }
 
 function wantsHumanHelp(text: string) {
@@ -789,7 +789,7 @@ function nextBotStateV2(
 
   if ((state.stage === "esperando_comprobante" && (!isTextLike || hasAttachment)) || (hasPaymentProofWords && hasAttachment)) {
     nextState = { ...nextState, stage: "comprobante_recibido" };
-    replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision.\n\nCuando se confirme, pasa a preparacion.`;
+    replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision. Cuando se confirme, pasa a preparacion.`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
   }
@@ -857,7 +857,7 @@ function nextBotStateV2(
     const paymentAmount = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "50%", paymentAmount };
     replyText = paymentAmount
-      ? `Perfecto. Adelanto: ${paymentAmount} Bs.\n\nTe enviaremos el QR por aqui.\n\nCuando pagues, manda el comprobante.`
+      ? `Perfecto. Adelanto: ${paymentAmount} Bs.\n\nTe enviaremos el QR por aqui. Cuando pagues, manda el comprobante.`
       : `Perfecto. Revisamos el monto y te pasamos el QR.${humanHelpHint()}`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
@@ -867,7 +867,7 @@ function nextBotStateV2(
     const paymentAmount = state.order.total ? safeMoney(state.order.total) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "completo", paymentAmount };
     replyText = paymentAmount
-      ? `Perfecto. Total: ${paymentAmount} Bs.\n\nTe enviaremos el QR por aqui.\n\nCuando pagues, manda el comprobante.`
+      ? `Perfecto. Total: ${paymentAmount} Bs.\n\nTe enviaremos el QR por aqui. Cuando pagues, manda el comprobante.`
       : `Perfecto. Revisamos el monto y te pasamos el QR.${humanHelpHint()}`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };

@@ -199,7 +199,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const reply = $('Prepare Chatwoot Reply').first().json;\nconst sentItems = $input.all().map((item) => item.json);\nconst picked = $('Pick Chatwoot Conversation').all().map((item) => item.json);\nconst { chatwootToken, chatwootBaseUrl, chatwootAccountId, chatwootContactId, ...safeReply } = reply;\n\nreturn [{\n  json: {\n    ...safeReply,\n    chatwootReplySent: sentItems.length > 0,\n    chatwootConversationId: picked[0]?.chatwootConversationId || null,\n    chatwootMessageIds: sentItems.map((sent) => sent?.id || sent?.payload?.id).filter(Boolean)\n  }\n}];"
+        "jsCode": "const reply = $('Prepare Chatwoot Reply').first().json;\nconst sentItems = $input.all().map((item) => item.json);\nconst { chatwootToken, chatwootBaseUrl, chatwootAccountId, chatwootContactId, ...safeReply } = reply;\n\nreturn [{\n  json: {\n    ...safeReply,\n    chatwootReplySent: sentItems.length > 0,\n    chatwootConversationId: reply.chatwootConversationId || null,\n    chatwootMessageIds: sentItems.map((sent) => sent?.id || sent?.payload?.id).filter(Boolean)\n  }\n}];"
       },
       "id": "e57550a3-003e-48f9-bce5-178cb2b41bb9",
       "name": "Finalize Waflow Response",
@@ -223,6 +223,40 @@
       "position": [
         1900,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ Boolean($json.chatwootConversationId) }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "1c3e30f6-5c2e-4cf7-b137-6d8cb51fdd2e",
+      "name": "Has Chatwoot Conversation Id",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        780,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const reply = $input.first().json;\n\nif (!reply.chatwootConversationId) {\n  throw new Error('Falta chatwootConversationId para responder directo.');\n}\n\nreturn reply.replyMessages.map((messageText, index) => ({\n  json: {\n    ...reply,\n    messageText,\n    messageIndex: index + 1\n  }\n}));"
+      },
+      "id": "98a6530d-b1d7-439f-a264-33cb5d4ec6e9",
+      "name": "Build Direct Chatwoot Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        -180
       ]
     }
   ],
@@ -275,7 +309,7 @@
       "main": [
         [
           {
-            "node": "Get Chatwoot Conversations",
+            "node": "Has Chatwoot Conversation Id",
             "type": "main",
             "index": 0
           }
@@ -327,6 +361,35 @@
         [
           {
             "node": "Respond to Waflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Chatwoot Conversation Id": {
+      "main": [
+        [
+          {
+            "node": "Build Direct Chatwoot Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Chatwoot Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Direct Chatwoot Messages": {
+      "main": [
+        [
+          {
+            "node": "Send Chatwoot Message",
             "type": "main",
             "index": 0
           }
