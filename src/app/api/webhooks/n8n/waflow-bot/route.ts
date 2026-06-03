@@ -342,7 +342,7 @@ function isFreshWebOrderMessage(text: string, state: BotState) {
 }
 
 function buildStartOnWebsiteReply(customerName: string) {
-  return `Hola ${customerName}, soy el asistente de Nachito Store.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\nAhi eliges catalogo o personalizada.`;
+  return `Hola ${customerName}.\n\nPara pedir, entra primero a la web:\n${nachitoStoreUrl}\n\nAhi eliges catalogo o personalizada.`;
 }
 
 function wantsHumanHelp(text: string) {
@@ -485,14 +485,14 @@ function buildHumanHandoffReply(customerName: string) {
 
 function buildPendingOrderReply(stage: BotStage) {
   if (stage === "esperando_tipo_pago") {
-    return `Tienes un pedido confirmado pendiente de pago.\n\nElige una opcion:\n50%: adelanto\nCompleto: todo el monto`;
+    return `Tienes un pedido confirmado.\n\nElige como quieres pagar:\n50%: adelanto\nCompleto: todo el monto`;
   }
 
   if (stage === "esperando_comprobante") {
-    return "Tienes un pedido pendiente de comprobante.\n\nCuando pagues, envia la foto del comprobante por aqui.";
+    return "Tu pedido esta esperando comprobante.\n\nCuando pagues, manda la foto por aqui.";
   }
 
-  return `Tienes un pedido pendiente.\n\nSi quieres seguir con ese pedido, responde "si".\n\nSi quieres hacer otro, entra a la web:\n${nachitoStoreUrl}`;
+  return `Tienes un pedido pendiente.\n\nSi esta bien, responde SI.\n\nPara hacer otro, entra a la web:\n${nachitoStoreUrl}`;
 }
 
 function wasPromptRecentlySent(state: BotState, prompt: string, windowMs = 4 * 60 * 1000) {
@@ -747,7 +747,13 @@ function nextBotState(state: BotState, text: string, customerName: string, messa
   return { state: nextState, replyText, needsHuman };
 }
 
-function nextBotStateV2(state: BotState, text: string, customerName: string, messageType: string): BotDecision {
+function nextBotStateV2(
+  state: BotState,
+  text: string,
+  customerName: string,
+  messageType: string,
+  hasAttachment = false
+): BotDecision {
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
   const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
@@ -775,9 +781,15 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     };
   }
 
-  if ((state.stage === "esperando_comprobante" && !isTextLike) || hasPaymentProofWords) {
+  if (state.stage === "esperando_comprobante" && hasPaymentProofWords && !hasAttachment && isTextLike) {
+    nextState = { ...nextState, stage: "esperando_comprobante" };
+    replyText = `Perfecto ${customerName}.\n\nMandame la foto del comprobante para revisarlo.`;
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  if ((state.stage === "esperando_comprobante" && (!isTextLike || hasAttachment)) || (hasPaymentProofWords && hasAttachment)) {
     nextState = { ...nextState, stage: "comprobante_recibido" };
-    replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision.\n\nCuando se confirme, tu pedido pasa a preparacion.`;
+    replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision.\n\nCuando se confirme, pasa a preparacion.`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
   }
@@ -800,7 +812,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     }
 
     nextState = { stage: "esperando_confirmacion", order, updatedAt: new Date().toISOString() };
-    replyText = `Ya tengo tu pedido nuevo:\n\n${buildSummary(order)}\n\nConfirmas si todo esta bien?`;
+    replyText = `Ya tengo tu pedido nuevo:\n\n${buildSummary(order)}\n\nConfirmas si todo esta bien? Responde SI o NO.`;
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -830,14 +842,14 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
         nextState = markPromptSent(nextState, "pending_order");
         replyText = buildPendingOrderReply(state.stage);
       } else {
-        replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, dime algo como "si", "dale" o "esta perfecto".`;
+        replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, responde SI. Si quieres cancelar, responde NO.`;
       }
       return { state: nextState, replyText, needsHuman };
     }
 
     nextState = { ...nextState, stage: "esperando_tipo_pago" };
     const half = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
-    replyText = `Pedido confirmado.\n\nComo quieres pagar?\n\n50%: ${half} Bs\nCompleto: ${state.order.total} Bs`;
+    replyText = `Pedido confirmado.\n\nComo quieres pagar?\n50%: ${half} Bs\nCompleto: ${state.order.total} Bs`;
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -845,7 +857,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     const paymentAmount = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "50%", paymentAmount };
     replyText = paymentAmount
-      ? `Perfecto. El adelanto es ${paymentAmount} Bs.\n\nTe pasaremos el QR para pagar.\n\nCuando pagues, envia el comprobante.`
+      ? `Perfecto. Adelanto: ${paymentAmount} Bs.\n\nTe enviaremos el QR por aqui.\n\nCuando pagues, manda el comprobante.`
       : `Perfecto. Revisamos el monto y te pasamos el QR.${humanHelpHint()}`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
@@ -855,7 +867,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     const paymentAmount = state.order.total ? safeMoney(state.order.total) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "completo", paymentAmount };
     replyText = paymentAmount
-      ? `Perfecto. El total es ${paymentAmount} Bs.\n\nTe pasaremos el QR para pagar.\n\nCuando pagues, envia el comprobante.`
+      ? `Perfecto. Total: ${paymentAmount} Bs.\n\nTe enviaremos el QR por aqui.\n\nCuando pagues, manda el comprobante.`
       : `Perfecto. Revisamos el monto y te pasamos el QR.${humanHelpHint()}`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
@@ -875,12 +887,12 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
 
   if (missing.length) {
     nextState = { ...nextState, stage: "faltan_datos", order };
-    replyText = `Ya recibi tu mensaje, ${customerName}.\n\nMe falta: ${missing.join(", ")}.\n\nResponde esos datos para continuar.${humanHelpHint()}`;
+    replyText = `Ya recibi tu mensaje, ${customerName}.\n\nMe falta: ${missing.join(", ")}.`;
     return { state: nextState, replyText, needsHuman };
   }
 
   nextState = { ...nextState, stage: "esperando_confirmacion", order };
-  replyText = `Ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmas si todo esta bien?`;
+  replyText = `Ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmas si todo esta bien? Responde SI o NO.`;
 
   return { state: nextState, replyText, needsHuman };
 }
@@ -1012,7 +1024,13 @@ export async function POST(request: Request) {
 
     const currentState = ((latestStateMessage?.metadata as { botState?: BotState } | null)?.botState ?? initialState()) as BotState;
     const previousStage = currentState.stage;
-    const { state, replyText, needsHuman, botActive } = nextBotStateV2(currentState, text, name, messageType);
+    const { state, replyText, needsHuman, botActive } = nextBotStateV2(
+      currentState,
+      text,
+      name,
+      messageType,
+      Boolean(attachmentUrl)
+    );
     const replyMessages = splitReplyMessages(replyText);
     const paymentRequest = await upsertPaymentRequest(supabase, {
       conversationId: conversation.id,
