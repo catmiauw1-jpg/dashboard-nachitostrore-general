@@ -32,6 +32,8 @@ interface BotState {
   order?: BotOrder;
   paymentChoice?: "50%" | "completo";
   paymentAmount?: number;
+  lastPrompt?: string;
+  lastPromptAt?: string;
   updatedAt?: string;
 }
 
@@ -436,8 +438,59 @@ function isFullPaymentIntent(text: string) {
   return /(^|\s)(completo|completa|todo|total|100%?|pago completo|pagar todo)(\s|$)/i.test(normalized);
 }
 
+function isGreetingIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  const greetings = new Set(["hola", "buenas", "buen dia", "buenas tardes", "buenas noches", "hey", "ola"]);
+  return greetings.has(normalized) || /^(hola|buenas|buen dia|buenas tardes|buenas noches)\b/.test(normalized);
+}
+
+function isNewOrderRequestIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  return hasAnyPhrase(normalized, [
+    "quiero hacer un pedido",
+    "quisiera hacer un pedido",
+    "quiero pedir",
+    "quiero comprar",
+    "hacer pedido",
+    "nuevo pedido",
+    "otra polera",
+    "otra prenda",
+    "cotizar otra",
+    "quiero cotizar"
+  ]);
+}
+
 function buildHumanHandoffReply(customerName: string) {
   return `Listo ${customerName}, te paso con una persona de Nachito Store.`;
+}
+
+function buildPendingOrderReply(stage: BotStage) {
+  if (stage === "esperando_tipo_pago") {
+    return `Tienes un pedido confirmado pendiente de pago.\n\nElige una opcion:\n50%: adelanto\nCompleto: todo el monto`;
+  }
+
+  if (stage === "esperando_comprobante") {
+    return "Tienes un pedido pendiente de comprobante.\n\nCuando pagues, envia la foto del comprobante por aqui.";
+  }
+
+  return `Tienes un pedido pendiente.\n\nSi quieres seguir con ese pedido, responde "si".\n\nSi quieres hacer otro, entra a la web:\n${nachitoStoreUrl}`;
+}
+
+function wasPromptRecentlySent(state: BotState, prompt: string, windowMs = 4 * 60 * 1000) {
+  if (state.lastPrompt !== prompt || !state.lastPromptAt) return false;
+  return Date.now() - new Date(state.lastPromptAt).getTime() < windowMs;
+}
+
+function markPromptSent(state: BotState, prompt: string): BotState {
+  return {
+    ...state,
+    lastPrompt: prompt,
+    lastPromptAt: new Date().toISOString()
+  };
 }
 
 function humanHelpHint() {
@@ -692,7 +745,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   if (cancelsOrder) {
     return {
       state: initialState(),
-      replyText: `Entendido ${customerName}, cancelamos este flujo.\n\nPara empezar de nuevo, envia tu pedido desde la web.\n\nSi necesitas ayuda, responde HUMANO.`,
+      replyText: `Entendido ${customerName}, cancelamos este flujo.\n\nPara empezar de nuevo, envia tu pedido desde la web:\n${nachitoStoreUrl}`,
       needsHuman: false
     };
   }
@@ -722,15 +775,29 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   }
 
   const stateStartedFromWeb = Boolean(state.order?.details && looksLikeWebOrderMessage(state.order.details));
+  const asksForNewOrder = isGreetingIntent(text) || isNewOrderRequestIntent(text);
+
   if (!looksLikeWebOrderMessage(text) && (!state.order || !stateStartedFromWeb)) {
     nextState = { stage: "nuevo", updatedAt: new Date().toISOString() };
+    if (asksForNewOrder && wasPromptRecentlySent(state, "start_on_website")) {
+      return { state: nextState, replyText: "", needsHuman };
+    }
+    nextState = markPromptSent(nextState, "start_on_website");
     replyText = buildStartOnWebsiteReply(customerName);
     return { state: nextState, replyText, needsHuman };
   }
 
   if (state.stage === "esperando_confirmacion" && state.order) {
     if (!confirmsOrder) {
-      replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, dime algo como "si", "dale" o "esta perfecto".`;
+      if (asksForNewOrder) {
+        if (wasPromptRecentlySent(state, "pending_order")) {
+          return { state: nextState, replyText: "", needsHuman };
+        }
+        nextState = markPromptSent(nextState, "pending_order");
+        replyText = buildPendingOrderReply(state.stage);
+      } else {
+        replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, dime algo como "si", "dale" o "esta perfecto".`;
+      }
       return { state: nextState, replyText, needsHuman };
     }
 
@@ -761,7 +828,11 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   }
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
-    replyText = `Elige una opcion para seguir:\n\n50%: adelanto\nCompleto: todo el monto`;
+    if (asksForNewOrder && wasPromptRecentlySent(state, "payment_choice")) {
+      return { state: nextState, replyText: "", needsHuman };
+    }
+    nextState = markPromptSent(nextState, "payment_choice");
+    replyText = buildPendingOrderReply(state.stage);
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -933,16 +1004,30 @@ export async function POST(request: Request) {
       }
     });
 
-    await supabase.from("messages").insert({
-      conversation_id: conversation.id,
-      direction: "outbound",
-      body: replyText,
-      source: "bot",
-      metadata: {
-        botState: state,
-        needsHuman
-      }
-    });
+    if (replyText) {
+      await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        direction: "outbound",
+        body: replyText,
+        source: "bot",
+        metadata: {
+          botState: state,
+          needsHuman
+        }
+      });
+    } else {
+      await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        direction: "outbound",
+        body: "[sin respuesta enviada]",
+        source: "bot",
+        metadata: {
+          botState: state,
+          needsHuman,
+          suppressed: true
+        }
+      });
+    }
 
     const conversationUpdate: Record<string, unknown> = {
       customer_name: name,
