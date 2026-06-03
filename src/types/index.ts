@@ -151,6 +151,14 @@ export interface Order {
   referenceImages?: string[];
   stockDeducted?: boolean;
   stockDeductedAt?: string;
+  botStage?: string;
+  paymentChoice?: "50%" | "completo";
+  paymentAmountDue?: number;
+  paymentProvider?: string;
+  paymentQrUrl?: string;
+  paymentCheckoutUrl?: string;
+  paymentProofUrls?: string[];
+  requiresManualReview?: boolean;
   items?: OrderLineItem[];
 }
 

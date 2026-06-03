@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAdminClient } from "@/lib/supabase";
 import { RequestSecurityError, assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
 
@@ -102,7 +103,19 @@ interface WaflowPayload {
     fromMe?: boolean;
     direction?: string;
     timestamp?: string | number;
+    attachments?: Array<{
+      data_url?: string;
+      file_url?: string;
+      thumb_url?: string;
+      url?: string;
+    }>;
   };
+  attachments?: Array<{
+    data_url?: string;
+    file_url?: string;
+    thumb_url?: string;
+    url?: string;
+  }>;
   data?: {
     agencyId?: string;
     locationId?: string;
@@ -169,6 +182,14 @@ function parseText(payload: WaflowPayload) {
 
 function parseMessage(payload: WaflowPayload) {
   return payload.message ?? payload.data?.message ?? payload.payload?.message ?? {};
+}
+
+function parseAttachmentUrl(payload: WaflowPayload) {
+  const message = parseMessage(payload);
+  const attachments = payload.attachments ?? message.attachments ?? [];
+  const first = Array.isArray(attachments) ? attachments[0] : undefined;
+
+  return cleanText(first?.data_url ?? first?.file_url ?? first?.url ?? first?.thumb_url, 500) || undefined;
 }
 
 function parseContact(payload: WaflowPayload) {
@@ -338,6 +359,133 @@ function stableHash(value: string) {
   }
 
   return (hash >>> 0).toString(16);
+}
+
+async function readBotSettings(supabase: SupabaseClient) {
+  const { data, error } = await supabase.from("bot_settings").select("key, value");
+
+  if (error || !data) return new Map<string, string>();
+
+  return new Map(data.map((row: { key: string; value: string }) => [row.key, row.value]));
+}
+
+function boolSetting(settings: Map<string, string>, key: string, fallback: boolean) {
+  const value = settings.get(key);
+  if (value === undefined) return fallback;
+  return value.toLowerCase() === "true";
+}
+
+async function findLatestOpenOrder(supabase: SupabaseClient, phone: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, order_number, order_status, payment_status, total")
+    .eq("customer_phone", phone)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  if (error || !data) return null;
+
+  return data.find((order: { order_status?: string }) => !["Cancelado", "Entregado"].includes(order.order_status ?? "")) ?? data[0] ?? null;
+}
+
+async function logBotEvent(
+  supabase: SupabaseClient,
+  payload: {
+    conversationId: string;
+    orderId?: string;
+    eventType: string;
+    previousStage?: string;
+    nextStage?: string;
+    data?: Record<string, unknown>;
+  }
+) {
+  await supabase.from("bot_events").insert({
+    conversation_id: payload.conversationId,
+    order_id: payload.orderId,
+    event_type: payload.eventType,
+    previous_stage: payload.previousStage,
+    next_stage: payload.nextStage,
+    payload: payload.data ?? {},
+    source: "waflow-bot"
+  });
+}
+
+async function upsertPaymentRequest(
+  supabase: SupabaseClient,
+  payload: {
+    conversationId: string;
+    phone: string;
+    state: BotState;
+    attachmentUrl?: string;
+    settings: Map<string, string>;
+  }
+) {
+  if (!payload.state.paymentChoice || !payload.state.paymentAmount) return null;
+
+  const latestOrder = await findLatestOpenOrder(supabase, payload.phone);
+  const provider = payload.settings.get("payment_provider") || process.env.PAYMENT_PROVIDER || "manual_pending_gateway";
+  const gatewayEnabled = boolSetting(payload.settings, "payment_gateway_enabled", false);
+  const qrUrl = gatewayEnabled ? payload.settings.get("payment_qr_placeholder_url") || null : null;
+  const externalReference = `${latestOrder?.order_number ?? payload.conversationId}-${payload.state.paymentChoice}`;
+
+  const query = latestOrder?.id
+    ? supabase
+        .from("payment_requests")
+        .select("id")
+        .eq("order_id", latestOrder.id)
+        .eq("status", "pending")
+        .limit(1)
+        .maybeSingle()
+    : supabase
+        .from("payment_requests")
+        .select("id")
+        .eq("conversation_id", payload.conversationId)
+        .eq("status", "pending")
+        .limit(1)
+        .maybeSingle();
+
+  const { data: existing } = await query;
+  const paymentPayload = {
+    order_id: latestOrder?.id ?? null,
+    conversation_id: payload.conversationId,
+    provider,
+    status: payload.attachmentUrl ? "proof_received" : "pending",
+    payment_choice: payload.state.paymentChoice,
+    amount: payload.state.paymentAmount,
+    currency: "BOB",
+    qr_url: qrUrl,
+    checkout_url: null,
+    external_reference: externalReference,
+    proof_url: payload.attachmentUrl ?? null,
+    verification_payload: {
+      gatewayReady: gatewayEnabled,
+      source: "waflow-bot",
+      order: payload.state.order ?? null
+    }
+  };
+
+  const result = existing?.id
+    ? await supabase.from("payment_requests").update(paymentPayload).eq("id", existing.id).select("id, status, provider, amount, qr_url").single()
+    : await supabase.from("payment_requests").insert(paymentPayload).select("id, status, provider, amount, qr_url").single();
+
+  if (latestOrder?.id) {
+    await supabase
+      .from("orders")
+      .update({
+        bot_conversation_id: payload.conversationId,
+        bot_stage: payload.state.stage,
+        payment_choice: payload.state.paymentChoice,
+        payment_amount_due: payload.state.paymentAmount,
+        payment_provider: provider,
+        payment_reference: externalReference,
+        payment_qr_url: qrUrl,
+        requires_manual_review: payload.state.stage === "comprobante_recibido",
+        order_status: payload.state.stage === "comprobante_recibido" ? "Esperando pago" : "Esperando pago"
+      })
+      .eq("id", latestOrder.id);
+  }
+
+  return result.data ?? null;
 }
 
 function isOutboundProviderMessage(payload: WaflowPayload) {
@@ -551,12 +699,15 @@ export async function POST(request: Request) {
     const fromMe = isOutboundProviderMessage(payload);
     const { name, phone } = parseContact(payload);
     const waflowContext = parseWaflowContext(payload);
+    const attachmentUrl = parseAttachmentUrl(payload);
 
     if (!phone) {
       throw new RequestSecurityError("Falta telefono del cliente.", 400);
     }
 
     const supabase = requireSupabaseAdminClient();
+    const settings = await readBotSettings(supabase);
+    const botGlobalActive = boolSetting(settings, "bot_global_active", true);
     const inboundBody = text || `[${messageType}]`;
     const eventKey = buildWebhookEventKey(payload, phone, inboundBody, messageType);
     const { error: eventInsertError } = await supabase.from("webhook_events").insert({
@@ -590,6 +741,11 @@ export async function POST(request: Request) {
           phone,
           bot_active: true,
           status: "nuevo",
+          bot_stage: "nuevo",
+          waflow_contact_id: waflowContext.waflowContactId,
+          waflow_location_id: waflowContext.waflowLocationId,
+          chatwoot_conversation_id: waflowContext.chatwootConversationId,
+          last_inbound_message_id: cleanText(payloadMessage.id, 120) || eventKey,
           last_message_at: new Date().toISOString()
         })
         .select("id, customer_name, phone, bot_active, status")
@@ -624,10 +780,10 @@ export async function POST(request: Request) {
       direction: fromMe ? "outbound" : "inbound",
       body: inboundBody,
       source: "waflow",
-      metadata: { raw: payload }
+      metadata: { raw: payload, attachmentUrl }
     });
 
-    if (!conversation.bot_active || fromMe) {
+    if (!botGlobalActive || !conversation.bot_active || fromMe) {
       return NextResponse.json(
         { ok: true, replyText: "", stage: conversation.status, needsHuman: true },
         { headers: secureJsonHeaders(request) }
@@ -646,8 +802,32 @@ export async function POST(request: Request) {
     if (latestStateError) throw latestStateError;
 
     const currentState = ((latestStateMessage?.metadata as { botState?: BotState } | null)?.botState ?? initialState()) as BotState;
+    const previousStage = currentState.stage;
     const { state, replyText, needsHuman, botActive } = nextBotStateV2(currentState, text, name, messageType);
     const replyMessages = splitReplyMessages(replyText);
+    const paymentRequest = await upsertPaymentRequest(supabase, {
+      conversationId: conversation.id,
+      phone,
+      state,
+      attachmentUrl,
+      settings
+    });
+
+    await logBotEvent(supabase, {
+      conversationId: conversation.id,
+      orderId: undefined,
+      eventType: paymentRequest ? "payment_request_updated" : "bot_stage_changed",
+      previousStage,
+      nextStage: state.stage,
+      data: {
+        paymentRequest,
+        paymentChoice: state.paymentChoice,
+        paymentAmount: state.paymentAmount,
+        needsHuman,
+        messageType,
+        hasAttachment: Boolean(attachmentUrl)
+      }
+    });
 
     await supabase.from("messages").insert({
       conversation_id: conversation.id,
@@ -660,9 +840,21 @@ export async function POST(request: Request) {
       }
     });
 
-    const conversationUpdate: Record<string, string | boolean> = {
+    const conversationUpdate: Record<string, unknown> = {
       customer_name: name,
       status: state.stage,
+      bot_stage: state.stage,
+      waflow_contact_id: waflowContext.waflowContactId,
+      waflow_location_id: waflowContext.waflowLocationId,
+      chatwoot_conversation_id: waflowContext.chatwootConversationId,
+      last_inbound_message_id: cleanText(payloadMessage.id, 120) || eventKey,
+      payment_flow: {
+        paymentChoice: state.paymentChoice,
+        paymentAmount: state.paymentAmount,
+        paymentRequestId: paymentRequest?.id,
+        provider: paymentRequest?.provider,
+        qrUrl: paymentRequest?.qr_url
+      },
       last_message_at: new Date().toISOString()
     };
 
@@ -687,6 +879,7 @@ export async function POST(request: Request) {
         ...waflowContext,
         paymentChoice: state.paymentChoice,
         paymentAmount: state.paymentAmount,
+        paymentRequest,
         botActive,
         needsHuman
       },

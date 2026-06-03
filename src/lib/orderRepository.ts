@@ -36,6 +36,14 @@ interface OrderRow {
   delivery_method: Order["delivery"] | null;
   total: number | string | null;
   notes: string | null;
+  bot_stage?: string | null;
+  payment_choice?: "50%" | "completo" | null;
+  payment_amount_due?: number | string | null;
+  payment_provider?: string | null;
+  payment_qr_url?: string | null;
+  payment_checkout_url?: string | null;
+  payment_proof_urls?: string[] | null;
+  requires_manual_review?: boolean | null;
   created_at: string | null;
   order_items?: OrderItemRow[];
 }
@@ -217,6 +225,14 @@ function rowToOrder(row: OrderRow): Order {
     referenceImages: notes.referenceImages ?? [],
     stockDeducted: notes.stockDeducted,
     stockDeductedAt: notes.stockDeductedAt,
+    botStage: row.bot_stage ?? undefined,
+    paymentChoice: row.payment_choice ?? undefined,
+    paymentAmountDue: row.payment_amount_due !== null && row.payment_amount_due !== undefined ? Number(row.payment_amount_due) : undefined,
+    paymentProvider: row.payment_provider ?? undefined,
+    paymentQrUrl: row.payment_qr_url ?? undefined,
+    paymentCheckoutUrl: row.payment_checkout_url ?? undefined,
+    paymentProofUrls: row.payment_proof_urls ?? undefined,
+    requiresManualReview: Boolean(row.requires_manual_review),
     items
   };
 }

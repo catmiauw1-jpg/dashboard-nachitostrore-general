@@ -90,6 +90,41 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ Array.isArray($json.replyMessages) && $json.replyMessages.length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "f4f6d603-53a9-4c6f-81c1-e13e8e4ab1b0",
+      "name": "Should Send Chatwoot Reply",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: $json.ok, replyText: '', replyMessages: [], stage: $json.stage, conversationId: $json.conversationId, order: $json.order, paymentChoice: $json.paymentChoice, paymentAmount: $json.paymentAmount, paymentRequest: $json.paymentRequest, needsHuman: $json.needsHuman, duplicate: $json.duplicate || false, chatwootReplySent: false, skipReason: $json.chatwootSkipReason || 'no reply' } }}",
+        "options": {}
+      },
+      "id": "d0945a3d-36e2-4e30-b482-c6dbf0d94f21",
+      "name": "Respond Without Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        180
+      ]
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "={{ $json.chatwootBaseUrl + '/api/v1/accounts/' + $json.chatwootAccountId + '/contacts/' + $json.chatwootContactId + '/conversations' }}",
         "sendHeaders": true,
@@ -112,7 +147,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        500,
+        780,
         0
       ]
     },
@@ -126,7 +161,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        780,
+        1060,
         0
       ]
     },
@@ -157,7 +192,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1060,
+        1340,
         0
       ]
     },
@@ -171,14 +206,14 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1340,
+        1620,
         0
       ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: $json.ok, replyText: '', replyMessages: [], stage: $json.stage, conversationId: $json.conversationId, order: $json.order, paymentChoice: $json.paymentChoice, paymentAmount: $json.paymentAmount, needsHuman: $json.needsHuman, chatwootReplySent: $json.chatwootReplySent, chatwootConversationId: $json.chatwootConversationId, chatwootMessageIds: $json.chatwootMessageIds } }}",
+        "responseBody": "={{ { ok: $json.ok, replyText: '', replyMessages: [], stage: $json.stage, conversationId: $json.conversationId, order: $json.order, paymentChoice: $json.paymentChoice, paymentAmount: $json.paymentAmount, paymentRequest: $json.paymentRequest, needsHuman: $json.needsHuman, chatwootReplySent: $json.chatwootReplySent, chatwootConversationId: $json.chatwootConversationId, chatwootMessageIds: $json.chatwootMessageIds } }}",
         "options": {}
       },
       "id": "dc64b5bf-27ac-41d1-bbce-ec7718796c2c",
@@ -186,7 +221,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1620,
+        1900,
         0
       ]
     }
@@ -229,7 +264,25 @@
       "main": [
         [
           {
+            "node": "Should Send Chatwoot Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Chatwoot Reply": {
+      "main": [
+        [
+          {
             "node": "Get Chatwoot Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Without Reply",
             "type": "main",
             "index": 0
           }
