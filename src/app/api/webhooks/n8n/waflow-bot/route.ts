@@ -332,6 +332,110 @@ function wantsHumanHelp(text: string) {
   return /\b(humano|persona|asesor|vendedor|atencion|atencion manual|hablar con alguien|quiero hablar|ayuda humana|soporte)\b/i.test(text);
 }
 
+function normalizeIntentText(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}%\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasAnyPhrase(text: string, phrases: string[]) {
+  return phrases.some((phrase) => text.includes(phrase));
+}
+
+function isConfirmationIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  const negativeFirst = [
+    "no esta bien",
+    "no esta correcto",
+    "no es correcto",
+    "no esta perfecto",
+    "no quiero",
+    "mejor no",
+    "cancelar",
+    "cancela"
+  ];
+
+  if (hasAnyPhrase(normalized, negativeFirst)) return false;
+
+  const exactConfirmations = new Set([
+    "si",
+    "sii",
+    "siii",
+    "sip",
+    "sep",
+    "ok",
+    "okay",
+    "dale",
+    "listo",
+    "correcto",
+    "confirmo",
+    "confirmar",
+    "adelante",
+    "perfecto",
+    "bien"
+  ]);
+
+  if (exactConfirmations.has(normalized)) return true;
+
+  return hasAnyPhrase(normalized, [
+    "esta perfecto",
+    "esta bien",
+    "todo bien",
+    "todo esta bien",
+    "todo esta perfecto",
+    "asi esta bien",
+    "asi esta perfecto",
+    "me parece bien",
+    "de acuerdo",
+    "dale nomas",
+    "dale no mas",
+    "si esta bien",
+    "si todo",
+    "si dale",
+    "si confirmo",
+    "confirmo el pedido",
+    "es correcto",
+    "esta correcto"
+  ]);
+}
+
+function isCancelIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  const exactCancellations = new Set(["no", "nop", "cancelar", "cancela", "salir", "reiniciar"]);
+  if (exactCancellations.has(normalized)) return true;
+
+  return hasAnyPhrase(normalized, [
+    "mejor no",
+    "no quiero",
+    "no gracias",
+    "quiero cancelar",
+    "cancela el pedido",
+    "empezar de nuevo",
+    "esta mal",
+    "hay error",
+    "quiero cambiar",
+    "modificar pedido"
+  ]);
+}
+
+function isHalfPaymentIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  return /(^|\s)(50%?|mitad|medio|adelanto|anticipo|media)(\s|$)/i.test(normalized);
+}
+
+function isFullPaymentIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  return /(^|\s)(completo|completa|todo|total|100%?|pago completo|pagar todo)(\s|$)/i.test(normalized);
+}
+
 function buildHumanHandoffReply(customerName: string) {
   return `Listo ${customerName}, te paso con una persona de Nachito Store.`;
 }
@@ -579,8 +683,8 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
   const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
-  const confirmsOrder = /^(si|confirmo|confirmar|ok|dale|listo|perfecto|de acuerdo|adelante)$/i.test(lower.trim());
-  const cancelsOrder = /^(no|cancelar|salir|reiniciar|empezar de nuevo|mejor no)$/i.test(lower.trim());
+  const confirmsOrder = isConfirmationIntent(text);
+  const cancelsOrder = isCancelIntent(text);
   let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
   let replyText = "";
   let needsHuman = false;
@@ -626,17 +730,17 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
 
   if (state.stage === "esperando_confirmacion" && state.order) {
     if (!confirmsOrder) {
-      replyText = `Confirma si todo esta bien:\n\n${buildSummary(state.order)}\n\nResponde SI para confirmar o NO para cancelar.${humanHelpHint()}`;
+      replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, dime algo como "si", "dale" o "esta perfecto".`;
       return { state: nextState, replyText, needsHuman };
     }
 
     nextState = { ...nextState, stage: "esperando_tipo_pago" };
     const half = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
-    replyText = `Pedido confirmado.\n\nComo prefieres pagar?\n\n50%: ${half} Bs\nCOMPLETO: ${state.order.total} Bs${humanHelpHint()}`;
+    replyText = `Pedido confirmado.\n\nComo quieres pagar?\n\n50%: ${half} Bs\nCompleto: ${state.order.total} Bs`;
     return { state: nextState, replyText, needsHuman };
   }
 
-  if (/(^|\s)(50%?|mitad|adelanto)(\s|$)/i.test(lower) && state.order) {
+  if (isHalfPaymentIntent(text) && state.order) {
     const paymentAmount = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "50%", paymentAmount };
     replyText = paymentAmount
@@ -646,7 +750,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     return { state: nextState, replyText, needsHuman };
   }
 
-  if (/(completo|todo|100%?|total)/i.test(lower) && state.order) {
+  if (isFullPaymentIntent(text) && state.order) {
     const paymentAmount = state.order.total ? safeMoney(state.order.total) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "completo", paymentAmount };
     replyText = paymentAmount
@@ -657,7 +761,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   }
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
-    replyText = `Responde 50% o COMPLETO para seguir.${humanHelpHint()}`;
+    replyText = `Elige una opcion para seguir:\n\n50%: adelanto\nCompleto: todo el monto`;
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -671,7 +775,7 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   }
 
   nextState = { ...nextState, stage: "esperando_confirmacion", order };
-  replyText = `Ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmas? Responde SI o NO.${humanHelpHint()}`;
+  replyText = `Ya tengo tu pedido:\n\n${buildSummary(order)}\n\nConfirmas si todo esta bien?`;
 
   return { state: nextState, replyText, needsHuman };
 }
