@@ -149,7 +149,7 @@ function hasValidSecret(request: Request) {
 }
 
 function normalizePhone(value: unknown) {
-  return cleanText(value, 40).replace(/[^\d+]/g, "").slice(0, 24);
+  return cleanText(value, 40).replace(/\D/g, "").slice(0, 24);
 }
 
 function safeMoney(value: unknown) {
@@ -169,7 +169,7 @@ function titleCase(value: unknown) {
 function parseText(payload: WaflowPayload) {
   const message = payload.message ?? payload.data?.message ?? payload.payload?.message ?? {};
 
-  return cleanText(
+  const text = cleanText(
     payload.text ??
       payload.content ??
       payload.messageText ??
@@ -180,6 +180,8 @@ function parseText(payload: WaflowPayload) {
       payload.payload?.text,
     2000
   ).replace(/\s+/g, " ");
+
+  return stripProviderTextSuffix(text);
 }
 
 function parseMessage(payload: WaflowPayload) {
@@ -324,6 +326,19 @@ function looksLikeWebOrderMessage(text: string) {
   return /quiero hacer este pedido|total estimado|cliente:|whatsapp:|quiero cotizar una polera personalizada|color:|talla:|subir referencias|\d+\s*x\s+.+\(.+talla.+\)\s*-\s*bs/i.test(
     text
   );
+}
+
+function stripProviderTextSuffix(text: string) {
+  return text.replace(/\s+source:\s*nachitostore\s*$/i, "").trim();
+}
+
+function isFreshWebOrderMessage(text: string, state: BotState) {
+  if (!looksLikeWebOrderMessage(text)) return false;
+
+  const incoming = normalizeIntentText(stripProviderTextSuffix(text));
+  const current = normalizeIntentText(stripProviderTextSuffix(state.order?.details ?? ""));
+
+  return Boolean(incoming && incoming !== current);
 }
 
 function buildStartOnWebsiteReply(customerName: string) {
@@ -774,6 +789,21 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
     return { state: nextState, replyText, needsHuman };
   }
 
+  if (isFreshWebOrderMessage(text, state)) {
+    const order = parseOrder(text);
+    const missing = missingFields(order);
+
+    if (missing.length) {
+      nextState = { stage: "faltan_datos", order, updatedAt: new Date().toISOString() };
+      replyText = `Recibi tu pedido nuevo.\n\nMe falta: ${missing.join(", ")}.`;
+      return { state: nextState, replyText, needsHuman };
+    }
+
+    nextState = { stage: "esperando_confirmacion", order, updatedAt: new Date().toISOString() };
+    replyText = `Ya tengo tu pedido nuevo:\n\n${buildSummary(order)}\n\nConfirmas si todo esta bien?`;
+    return { state: nextState, replyText, needsHuman };
+  }
+
   const stateStartedFromWeb = Boolean(state.order?.details && looksLikeWebOrderMessage(state.order.details));
   const asksForNewOrder = isGreetingIntent(text) || isNewOrderRequestIntent(text);
 
@@ -788,6 +818,10 @@ function nextBotStateV2(state: BotState, text: string, customerName: string, mes
   }
 
   if (state.stage === "esperando_confirmacion" && state.order) {
+    if (looksLikeWebOrderMessage(text)) {
+      return { state: nextState, replyText: "", needsHuman };
+    }
+
     if (!confirmsOrder) {
       if (asksForNewOrder) {
         if (wasPromptRecentlySent(state, "pending_order")) {
