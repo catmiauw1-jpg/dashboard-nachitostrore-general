@@ -42,9 +42,19 @@ interface BotDecision {
 }
 
 interface WaflowPayload {
+  account?: {
+    id?: string | number;
+  };
+  conversation?: {
+    id?: string | number;
+    contact_inbox?: {
+      contact_id?: string | number;
+    };
+  };
   text?: string;
   content?: string;
   messageText?: string;
+  message_type?: string;
   phone?: string;
   from?: string;
   customerPhone?: string;
@@ -68,16 +78,25 @@ interface WaflowPayload {
     name?: string;
     fullName?: string;
     phone?: string;
+    phone_number?: string;
     whatsapp?: string;
     wa_id?: string;
     profile?: {
       name?: string;
     };
   };
+  sender?: {
+    id?: string | number;
+    name?: string;
+    phone_number?: string;
+    identifier?: string;
+  };
   message?: {
+    id?: string | number;
     text?: string;
     body?: string;
     content?: string;
+    message_type?: string;
     type?: string;
     from?: string;
     fromMe?: boolean;
@@ -159,6 +178,9 @@ function parseContact(payload: WaflowPayload) {
     payload.phone ??
       payload.from ??
       payload.customerPhone ??
+      payload.sender?.phone_number ??
+      payload.sender?.identifier ??
+      contact.phone_number ??
       contact.phone ??
       contact.whatsapp ??
       contact.wa_id ??
@@ -166,7 +188,7 @@ function parseContact(payload: WaflowPayload) {
   );
 
   const name =
-    cleanText(payload.customerName ?? payload.name ?? contact.name ?? contact.fullName ?? contact.profile?.name, 80) ||
+    cleanText(payload.customerName ?? payload.name ?? payload.sender?.name ?? contact.name ?? contact.fullName ?? contact.profile?.name, 80) ||
     "Cliente WhatsApp";
 
   return { name, phone };
@@ -177,9 +199,14 @@ function parseWaflowContext(payload: WaflowPayload) {
   const slot = payload.slot ?? payload.data?.slot ?? payload.payload?.slot ?? {};
 
   return {
-    waflowContactId: cleanText(contact.id, 80) || undefined,
+    waflowContactId:
+      cleanText(
+        contact.id ?? payload.sender?.id ?? payload.conversation?.contact_inbox?.contact_id,
+        80
+      ) || undefined,
     waflowLocationId: cleanText(payload.locationId ?? payload.data?.locationId ?? payload.payload?.locationId, 120) || undefined,
-    waflowSlotId: cleanText(slot.id ?? slot.slotId, 40) || undefined
+    waflowSlotId: cleanText(slot.id ?? slot.slotId, 40) || undefined,
+    chatwootConversationId: cleanText(payload.conversation?.id, 80) || undefined
   };
 }
 
@@ -319,6 +346,7 @@ function isOutboundProviderMessage(payload: WaflowPayload) {
     payload.message?.direction ?? payload.data?.message?.direction ?? payload.payload?.message?.direction,
     40
   ).toLowerCase();
+  const messageType = cleanText(payload.message_type ?? message.message_type, 40).toLowerCase();
   const event = cleanText(payload.event, 120).toLowerCase();
 
   return Boolean(
@@ -327,12 +355,12 @@ function isOutboundProviderMessage(payload: WaflowPayload) {
       payload.payload?.message?.fromMe ??
       payload.fromMe ??
       false
-  ) || ["outbound", "outgoing", "sent"].includes(direction) || event.includes("outbound") || event.includes("sent");
+  ) || ["outbound", "outgoing", "sent"].includes(direction) || messageType === "outgoing" || event.includes("outbound") || event.includes("sent");
 }
 
 function buildWebhookEventKey(payload: WaflowPayload, phone: string, text: string, messageType: string) {
   const message = parseMessage(payload);
-  const timestamp = cleanText(message.timestamp ?? payload.timestamp, 60);
+  const timestamp = cleanText(message.timestamp ?? payload.timestamp ?? message.id, 60);
   const direction = cleanText(message.direction, 40).toLowerCase() || "inbound";
   const slotId = cleanText(payload.slot?.id ?? payload.data?.slot?.id ?? payload.payload?.slot?.id, 60);
   const event = cleanText(payload.event, 120).toLowerCase() || "waflow";
@@ -514,7 +542,12 @@ export async function POST(request: Request) {
 
     const payload = (await request.json()) as WaflowPayload;
     const text = parseText(payload);
-    const messageType = cleanText(payload.message?.type ?? payload.data?.message?.type ?? payload.messageType ?? payload.type, 40) || "text";
+    const payloadMessage = parseMessage(payload);
+    const messageType =
+      cleanText(
+        payloadMessage.type ?? payloadMessage.message_type ?? payload.message_type ?? payload.messageType ?? payload.type,
+        40
+      ) || "text";
     const fromMe = isOutboundProviderMessage(payload);
     const { name, phone } = parseContact(payload);
     const waflowContext = parseWaflowContext(payload);
