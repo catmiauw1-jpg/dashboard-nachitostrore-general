@@ -2,17 +2,22 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { requireAdminRequest } from "@/lib/adminAuth";
-import { jsonHeaders } from "@/lib/catalogStore";
-import { RequestSecurityError, assertAllowedOrigin, secureJsonHeaders } from "@/lib/requestSecurity";
+import { RequestSecurityError, assertAllowedOrigin, assertBodySize, secureJsonHeaders } from "@/lib/requestSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
-const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const allowedTypes = new Map([
+  ["image/jpeg", ".jpg"],
+  ["image/png", ".png"],
+  ["image/webp", ".webp"],
+  ["image/gif", ".gif"]
+]);
 const productImagesBucket = "product-images";
+const maxProductImageBytes = 5 * 1024 * 1024;
 
-function safeFileName(name: string) {
-  const extension = path.extname(name).toLowerCase() || ".png";
+function safeFileName(name: string, fileType: string) {
+  const extension = allowedTypes.get(fileType) ?? ".png";
   const baseName = path
-    .basename(name, extension)
+    .basename(name, path.extname(name))
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9-_]+/g, "-")
@@ -22,13 +27,14 @@ function safeFileName(name: string) {
   return `${baseName || "producto"}-${Date.now()}${extension}`;
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: jsonHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: secureJsonHeaders(request) });
 }
 
 export async function POST(request: Request) {
   try {
     assertAllowedOrigin(request);
+    assertBodySize(request, maxProductImageBytes + 1024 * 1024);
     await requireAdminRequest(request);
   } catch (error) {
     const status = error instanceof RequestSecurityError ? error.status : 401;
@@ -40,18 +46,25 @@ export async function POST(request: Request) {
   const file = formData.get("image");
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Imagen requerida" }, { status: 400, headers: jsonHeaders() });
+    return NextResponse.json({ error: "Imagen requerida" }, { status: 400, headers: secureJsonHeaders(request) });
   }
 
   if (!allowedTypes.has(file.type)) {
     return NextResponse.json(
       { error: "Formato no permitido. Usa JPG, PNG, WEBP o GIF." },
-      { status: 400, headers: jsonHeaders() }
+      { status: 400, headers: secureJsonHeaders(request) }
+    );
+  }
+
+  if (file.size > maxProductImageBytes) {
+    return NextResponse.json(
+      { error: "La imagen no puede superar 5 MB." },
+      { status: 413, headers: secureJsonHeaders(request) }
     );
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  const fileName = safeFileName(file.name);
+  const fileName = safeFileName(file.name, file.type);
   const supabase = createSupabaseAdminClient();
 
   if (supabase) {
@@ -73,17 +86,17 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json(
         { error: `No se pudo subir la imagen a Supabase: ${error.message}` },
-        { status: 500, headers: jsonHeaders() }
+        { status: 500, headers: secureJsonHeaders(request) }
       );
     }
 
     const { data } = supabase.storage.from(productImagesBucket).getPublicUrl(storagePath);
-    return NextResponse.json({ imageUrl: data.publicUrl }, { headers: jsonHeaders() });
+    return NextResponse.json({ imageUrl: data.publicUrl }, { headers: secureJsonHeaders(request) });
   }
 
   const uploadsDir = path.join(process.cwd(), "public", "uploads");
   await mkdir(uploadsDir, { recursive: true });
   await writeFile(path.join(uploadsDir, fileName), bytes);
 
-  return NextResponse.json({ imageUrl: `/uploads/${fileName}` }, { headers: jsonHeaders() });
+  return NextResponse.json({ imageUrl: `/uploads/${fileName}` }, { headers: secureJsonHeaders(request) });
 }

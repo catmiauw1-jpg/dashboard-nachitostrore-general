@@ -57,7 +57,7 @@ function mostCommon(values: Array<string | undefined>, fallback: string) {
 }
 
 function normalizePhone(value?: string) {
-  return value?.replace(/[^\d+]/g, "").trim() || "";
+  return value?.replace(/\D/g, "").trim() || "";
 }
 
 function isGenericCustomerName(value: string) {
@@ -271,7 +271,7 @@ export function CustomersSection({ customers: persistedCustomers, orders, onUpda
   const totalRevenue = customers.reduce((sum, customer) => sum + customer.totalSpent, 0);
   const selectedCustomerNote = selectedCustomer ? customerNotes[selectedCustomer.key] ?? selectedCustomer.persistedNote ?? "" : "";
   const whatsappLink = selectedCustomer?.phone
-    ? `https://wa.me/${normalizePhone(selectedCustomer.phone).replace(/^\+/, "")}`
+    ? `https://wa.me/${normalizePhone(selectedCustomer.phone)}`
     : "";
 
   return (

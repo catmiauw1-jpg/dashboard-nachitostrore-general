@@ -10,7 +10,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
     "@tabler/icons-react": "^3.44.0",
-    "framer-motion": "^12.40.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

@@ -45,7 +45,7 @@ function orderNumber() {
 }
 
 function normalizePhone(value: unknown) {
-  return cleanText(value, 30).replace(/[^\d+]/g, "").slice(0, 24);
+  return cleanText(value, 30).replace(/\D/g, "").slice(0, 24);
 }
 
 function safeMoney(value: unknown) {

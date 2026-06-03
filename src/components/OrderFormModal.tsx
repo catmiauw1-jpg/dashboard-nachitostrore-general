@@ -34,7 +34,7 @@ function money(value: number) {
 }
 
 function cleanPhone(value: string) {
-  return value.replace(/[^\d+]/g, "").slice(0, 24);
+  return value.replace(/\D/g, "").slice(0, 24);
 }
 
 export function OrderFormModal({

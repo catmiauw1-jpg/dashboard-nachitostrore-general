@@ -70,7 +70,7 @@ function parseItems(value: string): OrderLineItem[] {
 }
 
 function normalizePhone(value: string) {
-  return value.replace(/[^\d+]/g, "").slice(0, 24);
+  return value.replace(/\D/g, "").slice(0, 24);
 }
 
 function safeQuantity(value: number) {
@@ -273,7 +273,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    assertAllowedOrigin(request);
     assertBodySize(request, maxOrderBodyBytes);
     let isAdminSubmission = false;
 
@@ -285,6 +284,12 @@ export async function POST(request: Request) {
         isAdminSubmission = false;
       }
     }
+
+    if (!isAdminSubmission && !request.headers.get("origin")) {
+      throw new RequestSecurityError("Origen requerido.", 403);
+    }
+
+    assertAllowedOrigin(request);
 
     const contentType = request.headers.get("content-type") ?? "";
     let order: Order;

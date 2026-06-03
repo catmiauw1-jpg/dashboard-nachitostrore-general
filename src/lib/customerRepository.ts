@@ -19,7 +19,7 @@ function cleanText(value: unknown, maxLength: number) {
 }
 
 function normalizePhone(value: unknown) {
-  return typeof value === "string" ? value.replace(/[^\d+]/g, "").slice(0, 24) : "";
+  return typeof value === "string" ? value.replace(/\D/g, "").slice(0, 24) : "";
 }
 
 function rowToCustomer(row: CustomerRow): Customer {
