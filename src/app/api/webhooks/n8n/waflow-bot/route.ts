@@ -377,6 +377,43 @@ function hasAnyPhrase(text: string, phrases: string[]) {
   return phrases.some((phrase) => text.includes(phrase));
 }
 
+function intentWords(text: string) {
+  return normalizeIntentText(text).split(" ").filter(Boolean);
+}
+
+function editDistance(a: string, b: string) {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const distances = Array.from({ length: rows }, () => Array<number>(cols).fill(0));
+
+  for (let row = 0; row < rows; row += 1) distances[row][0] = row;
+  for (let col = 0; col < cols; col += 1) distances[0][col] = col;
+
+  for (let row = 1; row < rows; row += 1) {
+    for (let col = 1; col < cols; col += 1) {
+      const cost = a[row - 1] === b[col - 1] ? 0 : 1;
+      distances[row][col] = Math.min(
+        distances[row - 1][col] + 1,
+        distances[row][col - 1] + 1,
+        distances[row - 1][col - 1] + cost
+      );
+    }
+  }
+
+  return distances[a.length][b.length];
+}
+
+function hasApproxWord(text: string, targets: string[]) {
+  const words = intentWords(text);
+  return targets.some((target) =>
+    words.some((word) => {
+      if (word === target || word.startsWith(target) || target.startsWith(word)) return true;
+      const maxDistance = target.length <= 5 ? 1 : 2;
+      return Math.abs(word.length - target.length) <= maxDistance && editDistance(word, target) <= maxDistance;
+    })
+  );
+}
+
 function isConfirmationIntent(text: string) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return false;
@@ -527,7 +564,7 @@ function isFreshOrderResetIntent(text: string) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return false;
 
-  return hasAnyPhrase(normalized, [
+  if (hasAnyPhrase(normalized, [
     "nuevo pedido",
     "hacer otro pedido",
     "hacer un nuevo pedido",
@@ -545,7 +582,15 @@ function isFreshOrderResetIntent(text: string) {
     "empezar otro",
     "empezar de nuevo",
     "volver a pedir"
-  ]);
+  ])) {
+    return true;
+  }
+
+  const mentionsOrder = hasAnyPhrase(normalized, ["pedido", "pedir", "comprar", "cotizar", "polera", "prenda"]);
+  const wantsAnother = hasApproxWord(normalized, ["otro", "otra", "nuevo", "nueva"]);
+  const action = hasAnyPhrase(normalized, ["quiero", "quisiera", "hacer", "armar", "empezar", "volver"]);
+
+  return mentionsOrder && wantsAnother && action;
 }
 
 function isOrderChangeIntent(text: string) {
@@ -645,7 +690,7 @@ function buildRecoveryReply(state: BotState, customerName: string) {
   }
 
   if (state.stage === "esperando_confirmacion") {
-    return `Tengo este pedido pendiente:\n\n${buildSummary(state.order)}\n\nResponde SI para confirmar o CAMBIAR para hacerlo de nuevo.`;
+    return `Vi que tienes este pedido pendiente:\n\n${buildSummary(state.order)}\n\nQuieres confirmarlo, cambiarlo o cancelarlo?`;
   }
 
   if (state.stage === "esperando_tipo_pago") {
@@ -672,7 +717,7 @@ function buildPendingOrderReply(stage: BotStage) {
     return "Tu pedido esta esperando comprobante.\n\nCuando pagues, manda la foto por aqui.";
   }
 
-  return `Tienes un pedido pendiente.\n\nResponde SI para seguir, CAMBIAR para hacerlo de nuevo o CANCELAR para dejarlo.`;
+  return "Vi que tienes un pedido pendiente.\n\nQuieres confirmarlo, cambiarlo o cancelarlo?";
 }
 
 function wasPromptRecentlySent(state: BotState, prompt: string, windowMs = 4 * 60 * 1000) {
@@ -1037,9 +1082,9 @@ function nextBotStateV2(
 
     if (!confirmsOrder) {
       if (asksForNewOrder) {
-        replyText = `Tienes un pedido pendiente.\n\nResponde SI para confirmarlo, CAMBIAR para rehacerlo o CANCELAR para dejarlo.`;
+        replyText = `Hola ${customerName}, vi que tienes un pedido pendiente.\n\nQuieres confirmarlo, cambiarlo o cancelarlo?`;
       } else {
-        replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, responde SI. Si quieres cancelar, responde NO.`;
+        replyText = `Te entiendo. Antes de avanzar, este es el pedido pendiente:\n\n${buildSummary(state.order)}\n\nQuieres confirmarlo, cambiarlo o cancelarlo?`;
       }
       return { state: nextState, replyText, needsHuman };
     }
