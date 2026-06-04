@@ -5,10 +5,16 @@
 Use this URL in Waflow or Chatwoot webhooks:
 
 ```text
-https://YOUR_N8N_PUBLIC_URL/webhook/poleraflow-waflow-bot-starter/waflow-webhook/poleraflow-waflow
+https://YOUR_N8N_PUBLIC_URL/webhook/poleraflow-waflow
 ```
 
 For local testing with Cloudflare Tunnel, replace `YOUR_N8N_PUBLIC_URL` with the active tunnel URL.
+
+Current local tunnel example:
+
+```text
+https://remember-durable-resistance-manhattan.trycloudflare.com/webhook/poleraflow-waflow
+```
 
 ## PoleraFlow bot processor
 
