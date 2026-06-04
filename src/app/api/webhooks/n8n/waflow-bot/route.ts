@@ -501,6 +501,8 @@ function buildFaqReply(text: string, state: BotState) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return "";
 
+  if (isHalfPaymentIntent(text) || isFullPaymentIntent(text)) return "";
+
   const suffix = state.order
     ? "\n\nSi seguimos con tu pedido, responde SI. Si quieres cambiarlo, dime CAMBIAR."
     : `\n\nPara pedir, entra a la web:\n${nachitoStoreUrl}`;
