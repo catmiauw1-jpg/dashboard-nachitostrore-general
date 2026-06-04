@@ -479,6 +479,87 @@ function isNewOrderRequestIntent(text: string) {
   ]);
 }
 
+function isOrderChangeIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  return hasAnyPhrase(normalized, [
+    "quiero cambiar",
+    "cambiar pedido",
+    "modificar pedido",
+    "me equivoque",
+    "esta mal",
+    "otro color",
+    "otra talla",
+    "otra prenda",
+    "cambiar talla",
+    "cambiar color"
+  ]);
+}
+
+function buildFaqReply(text: string, state: BotState) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return "";
+
+  const suffix = state.order
+    ? "\n\nSi seguimos con tu pedido, responde SI. Si quieres cambiarlo, dime CAMBIAR."
+    : `\n\nPara pedir, entra a la web:\n${nachitoStoreUrl}`;
+
+  if (hasAnyPhrase(normalized, ["cuanto tarda", "cuando estaria", "cuando esta listo", "tiempo", "demora", "dias"])) {
+    return `Normalmente demora 2 a 4 dias habiles.${suffix}`;
+  }
+
+  if (hasAnyPhrase(normalized, ["envio", "entrega", "yango", "delivery", "recoger", "retiro"])) {
+    return `Puedes recoger o pedir envio por Yango. El costo de envio se confirma por WhatsApp.${suffix}`;
+  }
+
+  if (hasAnyPhrase(normalized, ["pago", "pagar", "qr", "transferencia", "comprobante", "adelanto"])) {
+    if (state.stage === "esperando_comprobante") {
+      return "Cuando pagues, manda la foto del comprobante por aqui.";
+    }
+
+    return state.order
+      ? "Puedes pagar 50% de adelanto o el pago completo.\n\nResponde 50% o completo."
+      : `Primero envia tu pedido desde la web. Despues te paso las opciones de pago.\n${nachitoStoreUrl}`;
+  }
+
+  if (hasAnyPhrase(normalized, ["precio", "cuesta", "vale", "costo", "cotizar"])) {
+    return state.order
+      ? `Tu pedido esta en ${state.order.total || "precio por confirmar"} Bs.${suffix}`
+      : `Los precios salen en la web. Si es personalizada, envia la cotizacion desde ahi.\n${nachitoStoreUrl}`;
+  }
+
+  if (hasAnyPhrase(normalized, ["stock", "disponible", "hay talla", "talla disponible", "colores"])) {
+    return `El stock se valida desde la web al armar tu pedido.${suffix}`;
+  }
+
+  if (hasAnyPhrase(normalized, ["personalizada", "personalizar", "diseno", "logo", "imagen", "referencia"])) {
+    return `Para personalizada, sube tus referencias en la web y deja los detalles del diseno.${suffix}`;
+  }
+
+  return "";
+}
+
+function buildRecoveryReply(state: BotState, customerName: string) {
+  if (!state.order) {
+    return buildStartOnWebsiteReply(customerName);
+  }
+
+  if (state.stage === "esperando_confirmacion") {
+    return `Tengo este pedido pendiente:\n\n${buildSummary(state.order)}\n\nResponde SI para confirmar o CAMBIAR para hacerlo de nuevo.`;
+  }
+
+  if (state.stage === "esperando_tipo_pago") {
+    return buildPendingOrderReply(state.stage);
+  }
+
+  if (state.stage === "esperando_comprobante") {
+    return buildPendingOrderReply(state.stage);
+  }
+
+  return `Te sigo ayudando con tu pedido.\n\n${buildSummary(state.order)}\n\nDime SI, CAMBIAR o PAGO.`;
+}
+
 function buildHumanHandoffReply(customerName: string) {
   return `Listo ${customerName}, te paso con una persona de Nachito Store.`;
 }
@@ -755,9 +836,19 @@ function nextBotStateV2(
   const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
   const confirmsOrder = isConfirmationIntent(text);
   const cancelsOrder = isCancelIntent(text);
+  const wantsOrderChange = isOrderChangeIntent(text);
   let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
   let replyText = "";
   let needsHuman = false;
+
+  if (wantsOrderChange && state.order) {
+    nextState = initialState();
+    return {
+      state: nextState,
+      replyText: `Listo ${customerName}, dejamos ese pedido en pausa.\n\nPara cambiarlo sin perder datos, arma el pedido actualizado desde la web:\n${nachitoStoreUrl}`,
+      needsHuman: false
+    };
+  }
 
   if (cancelsOrder) {
     return {
@@ -795,6 +886,11 @@ function nextBotStateV2(
     replyText = `Recibi tu archivo, ${customerName}.\n\nLo dejo para revision manual.`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
+  }
+
+  const faqReply = buildFaqReply(text, state);
+  if (faqReply) {
+    return { state: nextState, replyText: faqReply, needsHuman };
   }
 
   if (isFreshWebOrderMessage(text, state)) {
@@ -875,6 +971,14 @@ function nextBotStateV2(
     }
     nextState = markPromptSent(nextState, "payment_choice");
     replyText = buildPendingOrderReply(state.stage);
+    return { state: nextState, replyText, needsHuman };
+  }
+
+  const looksUsefulForOrder =
+    looksLikeWebOrderMessage(text) || /\b(color|talla|precio|total|bs|frente|espalda|negro|blanco arena|personaliz|catalogo)\b/i.test(text);
+
+  if (!looksUsefulForOrder && state.order) {
+    replyText = buildRecoveryReply(state, customerName);
     return { state: nextState, replyText, needsHuman };
   }
 
