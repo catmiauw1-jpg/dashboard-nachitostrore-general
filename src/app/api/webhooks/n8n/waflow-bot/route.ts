@@ -44,6 +44,20 @@ interface BotDecision {
   botActive?: boolean;
 }
 
+type CustomerIntent =
+  | "web_order"
+  | "confirm"
+  | "cancel"
+  | "change"
+  | "fresh_order"
+  | "human"
+  | "half_payment"
+  | "full_payment"
+  | "payment_proof"
+  | "greeting"
+  | "faq"
+  | "unknown";
+
 interface WaflowPayload {
   account?: {
     id?: string | number;
@@ -426,15 +440,45 @@ function isCancelIntent(text: string) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return false;
 
-  const exactCancellations = new Set(["no", "nop", "cancelar", "cancela", "salir", "reiniciar"]);
+  const exactCancellations = new Set([
+    "no",
+    "nop",
+    "cancelar",
+    "cancela",
+    "cancelalo",
+    "anular",
+    "salir",
+    "reiniciar"
+  ]);
   if (exactCancellations.has(normalized)) return true;
 
   return hasAnyPhrase(normalized, [
     "mejor no",
     "no quiero",
     "no gracias",
+    "no era ese",
+    "no es ese",
+    "no es lo que pedi",
+    "no esta bien",
+    "no esta correcto",
+    "no es correcto",
+    "ya no quiero",
+    "ya no lo quiero",
+    "dejalo nomas",
+    "dejalo no mas",
+    "deja nomas",
+    "borra el pedido",
+    "anula el pedido",
+    "anular pedido",
     "quiero cancelar",
+    "quiero cancelarlo",
+    "lo quiero cancelar",
+    "cancelar pedido",
     "cancela el pedido",
+    "cancela mi pedido",
+    "cancelalo por favor",
+    "cancelamelo",
+    "cancelo pedido",
     "empezar de nuevo",
     "esta mal",
     "hay error",
@@ -491,6 +535,11 @@ function isFreshOrderResetIntent(text: string) {
     "quisiera otro pedido",
     "quiero hacer otro",
     "quiero hacer uno nuevo",
+    "quiero un nuevo",
+    "quisiera un nuevo",
+    "un nuevo pedido",
+    "otro pedido",
+    "otro pedidos",
     "quiero pedir otra",
     "quiero pedir otro",
     "empezar otro",
@@ -509,12 +558,40 @@ function isOrderChangeIntent(text: string) {
     "modificar pedido",
     "me equivoque",
     "esta mal",
+    "no esta bien",
+    "no esta correcto",
+    "no es correcto",
+    "no es ese",
+    "no era ese",
+    "me confundi",
     "otro color",
     "otra talla",
     "otra prenda",
     "cambiar talla",
     "cambiar color"
   ]);
+}
+
+function detectCustomerIntent(text: string, state: BotState, messageType: string, hasAttachment: boolean): CustomerIntent {
+  const lower = text.toLowerCase();
+  const isTextLike = isTextLikeMessage(messageType, text);
+  const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
+
+  if (looksLikeWebOrderMessage(text)) return "web_order";
+  if (wantsHumanHelp(text)) return "human";
+  if (state.order && isFreshOrderResetIntent(text)) return "fresh_order";
+  if (state.order && isOrderChangeIntent(text)) return "change";
+  if (isCancelIntent(text)) return "cancel";
+  if (isConfirmationIntent(text)) return "confirm";
+  if (isHalfPaymentIntent(text)) return "half_payment";
+  if (isFullPaymentIntent(text)) return "full_payment";
+  if ((state.stage === "esperando_comprobante" && (!isTextLike || hasAttachment)) || (hasPaymentProofWords && hasAttachment)) {
+    return "payment_proof";
+  }
+  if (isGreetingIntent(text) || isNewOrderRequestIntent(text)) return "greeting";
+  if (buildFaqReply(text, state)) return "faq";
+
+  return "unknown";
 }
 
 function buildFaqReply(text: string, state: BotState) {
@@ -856,10 +933,11 @@ function nextBotStateV2(
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
   const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
-  const confirmsOrder = isConfirmationIntent(text);
-  const cancelsOrder = isCancelIntent(text);
-  const wantsOrderChange = isOrderChangeIntent(text);
-  const wantsFreshOrder = isFreshOrderResetIntent(text);
+  const intent = detectCustomerIntent(text, state, messageType, hasAttachment);
+  const confirmsOrder = intent === "confirm";
+  const cancelsOrder = intent === "cancel";
+  const wantsOrderChange = intent === "change";
+  const wantsFreshOrder = intent === "fresh_order";
   let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
   let replyText = "";
   let needsHuman = false;
@@ -889,7 +967,7 @@ function nextBotStateV2(
     };
   }
 
-  if (wantsHumanHelp(text)) {
+  if (intent === "human") {
     nextState = { ...nextState, stage: "atencion_manual" };
     return {
       state: nextState,
@@ -905,7 +983,7 @@ function nextBotStateV2(
     return { state: nextState, replyText, needsHuman };
   }
 
-  if ((state.stage === "esperando_comprobante" && (!isTextLike || hasAttachment)) || (hasPaymentProofWords && hasAttachment)) {
+  if (intent === "payment_proof") {
     nextState = { ...nextState, stage: "comprobante_recibido" };
     replyText = `Recibi tu comprobante, ${customerName}.\n\nLo dejo en revision. Cuando se confirme, pasa a preparacion.`;
     needsHuman = true;
@@ -917,11 +995,6 @@ function nextBotStateV2(
     replyText = `Recibi tu archivo, ${customerName}.\n\nLo dejo para revision manual.`;
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
-  }
-
-  const faqReply = buildFaqReply(text, state);
-  if (faqReply) {
-    return { state: nextState, replyText: faqReply, needsHuman };
   }
 
   if (isFreshWebOrderMessage(text, state)) {
@@ -939,8 +1012,13 @@ function nextBotStateV2(
     return { state: nextState, replyText, needsHuman };
   }
 
+  const faqReply = buildFaqReply(text, state);
+  if (faqReply) {
+    return { state: nextState, replyText: faqReply, needsHuman };
+  }
+
   const stateStartedFromWeb = Boolean(state.order?.details && looksLikeWebOrderMessage(state.order.details));
-  const asksForNewOrder = isGreetingIntent(text) || isNewOrderRequestIntent(text);
+  const asksForNewOrder = intent === "greeting" || isNewOrderRequestIntent(text);
 
   if (!looksLikeWebOrderMessage(text) && (!state.order || !stateStartedFromWeb)) {
     nextState = { stage: "nuevo", updatedAt: new Date().toISOString() };
@@ -972,7 +1050,7 @@ function nextBotStateV2(
     return { state: nextState, replyText, needsHuman };
   }
 
-  if (isHalfPaymentIntent(text) && state.order) {
+  if (intent === "half_payment" && state.order) {
     const paymentAmount = state.order.total ? safeMoney(state.order.total * 0.5) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "50%", paymentAmount };
     replyText = paymentAmount
@@ -982,7 +1060,7 @@ function nextBotStateV2(
     return { state: nextState, replyText, needsHuman };
   }
 
-  if (isFullPaymentIntent(text) && state.order) {
+  if (intent === "full_payment" && state.order) {
     const paymentAmount = state.order.total ? safeMoney(state.order.total) : 0;
     nextState = { ...nextState, stage: "esperando_comprobante", paymentChoice: "completo", paymentAmount };
     replyText = paymentAmount
