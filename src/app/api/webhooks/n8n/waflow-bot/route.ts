@@ -856,7 +856,10 @@ function isOutboundProviderMessage(payload: WaflowPayload) {
 
 function buildWebhookEventKey(payload: WaflowPayload, phone: string, text: string, messageType: string) {
   const message = parseMessage(payload);
-  const timestamp = cleanText(message.timestamp ?? payload.timestamp ?? message.id, 60);
+  const stableMessageId = cleanText(message.id, 80);
+  const webhookTimestamp = cleanText(payload.timestamp, 80);
+  const messageTimestamp = cleanText(message.timestamp, 60);
+  const timestamp = stableMessageId || webhookTimestamp || messageTimestamp;
   const direction = cleanText(message.direction, 40).toLowerCase() || "inbound";
   const slotId = cleanText(payload.slot?.id ?? payload.data?.slot?.id ?? payload.payload?.slot?.id, 60);
   const event = cleanText(payload.event, 120).toLowerCase() || "waflow";
@@ -1022,9 +1025,6 @@ function nextBotStateV2(
 
   if (!looksLikeWebOrderMessage(text) && (!state.order || !stateStartedFromWeb)) {
     nextState = { stage: "nuevo", updatedAt: new Date().toISOString() };
-    if (asksForNewOrder && wasPromptRecentlySent(state, "start_on_website")) {
-      return { state: nextState, replyText: "", needsHuman };
-    }
     nextState = markPromptSent(nextState, "start_on_website");
     replyText = buildStartOnWebsiteReply(customerName);
     return { state: nextState, replyText, needsHuman };
@@ -1071,9 +1071,6 @@ function nextBotStateV2(
   }
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
-    if (asksForNewOrder && wasPromptRecentlySent(state, "payment_choice")) {
-      return { state: nextState, replyText: "", needsHuman };
-    }
     nextState = markPromptSent(nextState, "payment_choice");
     replyText = buildPendingOrderReply(state.stage);
     return { state: nextState, replyText, needsHuman };
