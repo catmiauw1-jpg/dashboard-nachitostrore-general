@@ -479,6 +479,26 @@ function isNewOrderRequestIntent(text: string) {
   ]);
 }
 
+function isFreshOrderResetIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  return hasAnyPhrase(normalized, [
+    "nuevo pedido",
+    "hacer otro pedido",
+    "hacer un nuevo pedido",
+    "quiero otro pedido",
+    "quisiera otro pedido",
+    "quiero hacer otro",
+    "quiero hacer uno nuevo",
+    "quiero pedir otra",
+    "quiero pedir otro",
+    "empezar otro",
+    "empezar de nuevo",
+    "volver a pedir"
+  ]);
+}
+
 function isOrderChangeIntent(text: string) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return false;
@@ -575,7 +595,7 @@ function buildPendingOrderReply(stage: BotStage) {
     return "Tu pedido esta esperando comprobante.\n\nCuando pagues, manda la foto por aqui.";
   }
 
-  return `Tienes un pedido pendiente.\n\nSi esta bien, responde SI.\n\nPara hacer otro, entra a la web:\n${nachitoStoreUrl}`;
+  return `Tienes un pedido pendiente.\n\nResponde SI para seguir, CAMBIAR para hacerlo de nuevo o CANCELAR para dejarlo.`;
 }
 
 function wasPromptRecentlySent(state: BotState, prompt: string, windowMs = 4 * 60 * 1000) {
@@ -839,9 +859,18 @@ function nextBotStateV2(
   const confirmsOrder = isConfirmationIntent(text);
   const cancelsOrder = isCancelIntent(text);
   const wantsOrderChange = isOrderChangeIntent(text);
+  const wantsFreshOrder = isFreshOrderResetIntent(text);
   let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
   let replyText = "";
   let needsHuman = false;
+
+  if (state.order && wantsFreshOrder && !looksLikeWebOrderMessage(text)) {
+    return {
+      state: initialState(),
+      replyText: `Listo ${customerName}, dejamos ese pedido anterior en pausa.\n\nPara hacer uno nuevo, entra a la web:\n${nachitoStoreUrl}`,
+      needsHuman: false
+    };
+  }
 
   if (wantsOrderChange && state.order) {
     nextState = initialState();
@@ -930,11 +959,7 @@ function nextBotStateV2(
 
     if (!confirmsOrder) {
       if (asksForNewOrder) {
-        if (wasPromptRecentlySent(state, "pending_order")) {
-          return { state: nextState, replyText: "", needsHuman };
-        }
-        nextState = markPromptSent(nextState, "pending_order");
-        replyText = buildPendingOrderReply(state.stage);
+        replyText = `Tienes un pedido pendiente.\n\nResponde SI para confirmarlo, CAMBIAR para rehacerlo o CANCELAR para dejarlo.`;
       } else {
         replyText = `Te confirmo el resumen:\n\n${buildSummary(state.order)}\n\nSi esta bien, responde SI. Si quieres cancelar, responde NO.`;
       }
