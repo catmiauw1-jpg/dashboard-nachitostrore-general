@@ -154,6 +154,62 @@
         100,
         120
       ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({\n  from: $json.from,\n  subject: $json.subject,\n  snippet: $json.snippet,\n  body: String($json.body || '').slice(0, 12000),\n  email_ts: $json.email_ts,\n  id: $json.id\n}) }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "Eres un lector de correos del Banco Mercantil Santa Cruz para Nachito Store.\nDevuelve SOLO JSON valido, sin markdown, sin comentarios y sin texto extra.\nTu tarea es extraer datos del correo, no confirmar pagos por tu cuenta.\n\nReglas:\n- Marca isMercantilCreditQr true solo si el correo indica un CREDITO / transferencia QR recibida.\n- Si el correo es debito, salida, rechazo, publicidad o no es pago recibido, safeToUse debe ser false.\n- Extrae el monto en bolivianos como numero decimal.\n- Extrae payerName si aparece el nombre del ordenante/remitente.\n- Extrae concept si aparece el concepto/referencia.\n- Extrae notificationNumber si aparece NTR, numero de notificacion o identificador bancario.\n- Extrae transactionAtText si aparece fecha/hora de la transaccion.\n- Si hay duda, confidence bajo y safeToUse false.\n\nFormato obligatorio:\n{\"isMercantilCreditQr\":false,\"amount\":null,\"payerName\":null,\"concept\":null,\"notificationNumber\":null,\"transactionAtText\":null,\"confidence\":0,\"safeToUse\":false,\"reason\":\"\"}",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false,
+          "enableStreaming": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -420,
+        -220
+      ],
+      "id": "74a0f4a0-1090-4d76-a681-1e3bf0f6f201",
+      "name": "AI Gmail Payment Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "google/gemma-4-31b-it:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -40
+      ],
+      "id": "bd6c15d2-ccf1-4c3e-9cc6-d6fb8a7901ff",
+      "name": "OpenRouter Gmail Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "fZBAqAMRSFTMx6Rc",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const email = $('Normalize Mercantil Email').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nlet parsed = null;\nconst jsonStart = raw.indexOf('{');\nconst jsonEnd = raw.lastIndexOf('}');\nconst jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (error) {\n  parsed = null;\n}\n\nfunction parseAmount(value) {\n  if (typeof value === 'number') return value;\n  if (typeof value !== 'string') return null;\n  const match = value.match(/[\\d.,]+/);\n  if (!match) return null;\n  const normalized = match[0].replace(/\\./g, '').replace(',', '.');\n  const amount = Number(normalized);\n  return Number.isFinite(amount) ? amount : null;\n}\n\nconst confidence = Number(parsed?.confidence || 0);\nconst aiEmailEvidence = {\n  isMercantilCreditQr: parsed?.isMercantilCreditQr === true,\n  amount: parseAmount(parsed?.amount),\n  payerName: parsed?.payerName ? String(parsed.payerName).slice(0, 160) : null,\n  concept: parsed?.concept ? String(parsed.concept).slice(0, 160) : null,\n  notificationNumber: parsed?.notificationNumber ? String(parsed.notificationNumber).slice(0, 80) : null,\n  transactionAtText: parsed?.transactionAtText ? String(parsed.transactionAtText).slice(0, 120) : null,\n  confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,\n  safeToUse: parsed?.safeToUse !== false,\n  reason: String(parsed?.reason || raw || '').slice(0, 240)\n};\n\nreturn [{ json: { ...email, aiEmailEvidence } }];"
+      },
+      "id": "80fe83a1-f410-4d67-bc05-19162fa191bf",
+      "name": "Attach AI Email Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -220
+      ]
     }
   ],
   "connections": {
@@ -172,7 +228,7 @@
       "main": [
         [
           {
-            "node": "Verify Payment in PoleraFlow",
+            "node": "AI Gmail Payment Agent",
             "type": "main",
             "index": 0
           }
@@ -214,6 +270,39 @@
           {
             "node": "Send Payment Confirmed WhatsApp",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Gmail Payment Agent": {
+      "main": [
+        [
+          {
+            "node": "Attach AI Email Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach AI Email Evidence": {
+      "main": [
+        [
+          {
+            "node": "Verify Payment in PoleraFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Gmail Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Gmail Payment Agent",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]

@@ -28,7 +28,25 @@ interface GmailPaymentPayload {
   html?: string;
   timestamp?: string;
   email_ts?: string;
+  aiEmailEvidence?: unknown;
+  ai_email_evidence?: unknown;
+  ai?: {
+    emailEvidence?: unknown;
+    email_evidence?: unknown;
+  };
   dryRun?: boolean;
+}
+
+interface AiEmailEvidence {
+  isMercantilCreditQr?: boolean;
+  amount?: number;
+  concept?: string;
+  payerName?: string;
+  notificationNumber?: string;
+  transactionAtText?: string;
+  confidence?: number;
+  safeToUse?: boolean;
+  reason?: string;
 }
 
 interface MercantilPaymentEmail {
@@ -39,6 +57,7 @@ interface MercantilPaymentEmail {
   transactionAtText?: string;
   emailId?: string;
   emailTimestamp?: string;
+  aiEvidence?: AiEmailEvidence;
   body: string;
 }
 
@@ -123,6 +142,32 @@ function firstRelation<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
+function parseAiEmailEvidence(payload: GmailPaymentPayload): AiEmailEvidence | null {
+  const rawEvidence = payload.aiEmailEvidence ?? payload.ai_email_evidence ?? payload.ai?.emailEvidence ?? payload.ai?.email_evidence;
+  if (!rawEvidence || typeof rawEvidence !== "object") return null;
+
+  const evidence = rawEvidence as Record<string, unknown>;
+  const amount =
+    typeof evidence.amount === "number"
+      ? evidence.amount
+      : typeof evidence.amount === "string"
+        ? parseMoneyValue(evidence.amount)
+        : undefined;
+  const confidence = Number(evidence.confidence);
+
+  return {
+    isMercantilCreditQr: evidence.isMercantilCreditQr === true,
+    amount: Number.isFinite(amount) && amount && amount > 0 ? amount : undefined,
+    concept: cleanText(evidence.concept, 160) || undefined,
+    payerName: cleanText(evidence.payerName, 160) || undefined,
+    notificationNumber: cleanText(evidence.notificationNumber, 80) || undefined,
+    transactionAtText: cleanText(evidence.transactionAtText, 120) || undefined,
+    confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
+    safeToUse: evidence.safeToUse !== false,
+    reason: cleanText(evidence.reason, 240) || undefined
+  };
+}
+
 function parseMercantilEmail(payload: GmailPaymentPayload): MercantilPaymentEmail | null {
   const body = normalizeBody(
     [
@@ -135,25 +180,29 @@ function parseMercantilEmail(payload: GmailPaymentPayload): MercantilPaymentEmai
   );
   if (!body) return null;
   if (/D\S{0,6}bito\s+Transferencia/i.test(body)) return null;
-  if (!/Transferencia\s+QR/i.test(body)) return null;
+  const aiEvidence = parseAiEmailEvidence(payload);
+  const canUseAiEvidence = Boolean(aiEvidence?.safeToUse && (aiEvidence.confidence ?? 0) >= 0.8);
+  if (!/Transferencia\s+QR/i.test(body) && !(canUseAiEvidence && aiEvidence?.isMercantilCreditQr)) return null;
 
   const amountMatch =
     body.match(/por un monto de Bs\.?\s*([\d.,]+)/i) ??
     body.match(/monto\s+de\s+Bs\.?\s*([\d.,]+)/i);
-  if (!amountMatch) return null;
+  const amount = amountMatch ? parseMoneyValue(amountMatch[1]) : canUseAiEvidence ? aiEvidence?.amount : undefined;
+  if (!amount) return null;
 
   const conceptMatch = body.match(/por concepto de\s+(.+?),\s+a su cuenta/i);
   const transactionMatch = body.match(/La transacci[oó]n fue realizada el\s+(.+?)\./i);
   const notificationMatch = body.match(/n[uú]mero de notificaci[oó]n:\s*([A-Z0-9-]+)/i);
 
   return {
-    amount: parseMoneyValue(amountMatch[1]),
-    payerName: extractMercantilPayerName(body),
-    concept: cleanText(conceptMatch?.[1], 160) || undefined,
-    notificationNumber: cleanText(notificationMatch?.[1], 80) || undefined,
-    transactionAtText: cleanText(transactionMatch?.[1], 120) || undefined,
+    amount,
+    payerName: extractMercantilPayerName(body) || aiEvidence?.payerName,
+    concept: cleanText(conceptMatch?.[1], 160) || aiEvidence?.concept,
+    notificationNumber: cleanText(notificationMatch?.[1], 80) || aiEvidence?.notificationNumber,
+    transactionAtText: cleanText(transactionMatch?.[1], 120) || aiEvidence?.transactionAtText,
     emailId: cleanText(payload.id ?? payload.messageId, 120) || undefined,
     emailTimestamp: cleanText(payload.timestamp ?? payload.email_ts, 80) || undefined,
+    aiEvidence: aiEvidence || undefined,
     body
   };
 }
