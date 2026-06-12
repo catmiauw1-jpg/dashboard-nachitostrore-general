@@ -19,10 +19,31 @@ interface MessageRow {
   body: string | null;
   source: string | null;
   created_at: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 function normalizePhone(value: unknown) {
   return typeof value === "string" ? value.replace(/\D/g, "").slice(0, 24) : "";
+}
+
+function messageAttachment(message: MessageRow) {
+  const metadata = message.metadata ?? {};
+  const raw = typeof metadata.raw === "object" && metadata.raw !== null ? metadata.raw as Record<string, unknown> : {};
+  const details =
+    typeof metadata.attachmentDetails === "object" && metadata.attachmentDetails !== null
+      ? metadata.attachmentDetails as Record<string, unknown>
+      : {};
+  const attachmentUrl = typeof metadata.attachmentUrl === "string" ? metadata.attachmentUrl : "";
+  const detailsUrl = typeof details.url === "string" ? details.url : "";
+  const attachmentType = typeof metadata.attachmentType === "string" ? metadata.attachmentType : "";
+  const detailsType = typeof details.type === "string" ? details.type : "";
+  const detailsMimeType = typeof details.mimeType === "string" ? details.mimeType : "";
+  const rawType = typeof raw.type === "string" ? raw.type : "";
+
+  return {
+    attachmentUrl: attachmentUrl || detailsUrl || undefined,
+    attachmentType: attachmentType || detailsMimeType || detailsType || rawType || undefined
+  };
 }
 
 function humanStage(stage?: string | null) {
@@ -98,7 +119,7 @@ export async function readConversations(): Promise<Conversation[]> {
   if (ids.length) {
     const { data: messages, error: messagesError } = await supabase
       .from("messages")
-      .select("id, conversation_id, direction, body, source, created_at")
+      .select("id, conversation_id, direction, body, source, created_at, metadata")
       .in("conversation_id", ids)
       .order("created_at", { ascending: false })
       .limit(600);
@@ -111,12 +132,15 @@ export async function readConversations(): Promise<Conversation[]> {
 
         const list = messagesByConversation.get(message.conversation_id) ?? [];
         if (list.length < 25) {
+          const attachment = messageAttachment(message);
           list.push({
             id: message.id,
             direction: message.direction,
             body: message.body ?? "",
             createdAt: message.created_at ?? undefined,
-            source: message.source ?? undefined
+            source: message.source ?? undefined,
+            attachmentUrl: attachment.attachmentUrl,
+            attachmentType: attachment.attachmentType
           });
           messagesByConversation.set(message.conversation_id, list);
         }

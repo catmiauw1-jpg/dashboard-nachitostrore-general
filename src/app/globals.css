@@ -2917,7 +2917,7 @@ body.dark .home-workspace .chat-item {
 
 .whatsapp-console-grid {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 280px;
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -2987,7 +2987,7 @@ body.dark .home-workspace .chat-item {
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 10px;
   width: 100%;
-  padding: 12px;
+  padding: 12px 14px;
   border: 0;
   border-bottom: 1px solid var(--border);
   background: transparent;
@@ -3005,7 +3005,7 @@ body.dark .home-workspace .chat-item {
 .whatsapp-console-chat-copy {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 7px;
 }
 
 .whatsapp-console-chat-copy > span:first-child {
@@ -3109,6 +3109,36 @@ body.dark .home-workspace .chat-item {
 
 .whatsapp-console-thread .wa-message small {
   text-align: right;
+}
+
+.wa-message-media {
+  display: block;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.wa-message-media img {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+}
+
+.wa-message-file {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
 }
 
 .whatsapp-console-composer {

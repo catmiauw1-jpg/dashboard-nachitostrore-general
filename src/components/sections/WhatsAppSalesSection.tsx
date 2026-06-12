@@ -39,6 +39,21 @@ function formatMessageTime(value?: string) {
   return new Intl.DateTimeFormat("es-BO", { hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
+function isImageAttachment(url?: string, type?: string) {
+  const normalizedType = (type ?? "").toLowerCase();
+  const normalizedUrl = (url ?? "").toLowerCase();
+  return (
+    normalizedType.includes("image") ||
+    /\.(apng|avif|gif|jpe?g|png|webp)(\?|#|$)/i.test(normalizedUrl)
+  );
+}
+
+function visibleMessageBody(body: string, hasAttachment: boolean) {
+  if (!hasAttachment) return body;
+  const normalized = body.trim().toLowerCase();
+  return normalized === "[image]" || normalized === "[document]" || normalized === "[archivo]" ? "" : body;
+}
+
 function normalizePhone(value?: string) {
   const digits = value?.replace(/\D/g, "") ?? "";
   if (!digits) return "";
@@ -398,10 +413,20 @@ export function WhatsAppSalesSection({
                     className={`wa-message ${message.direction === "outbound" ? "out" : "in"}`}
                     key={message.id ?? `${message.createdAt}-${message.body}`}
                   >
-                    <p>{message.body}</p>
-                    <small>
-                      {message.direction === "outbound" ? "Tu" : selectedChat.name} {formatMessageTime(message.createdAt)}
-                    </small>
+                    {message.attachmentUrl && isImageAttachment(message.attachmentUrl, message.attachmentType) ? (
+                      <a className="wa-message-media" href={message.attachmentUrl} rel="noreferrer" target="_blank">
+                        <img alt="Adjunto de WhatsApp" src={message.attachmentUrl} />
+                      </a>
+                    ) : null}
+                    {message.attachmentUrl && !isImageAttachment(message.attachmentUrl, message.attachmentType) ? (
+                      <a className="wa-message-file" href={message.attachmentUrl} rel="noreferrer" target="_blank">
+                        Ver archivo adjunto
+                      </a>
+                    ) : null}
+                    {visibleMessageBody(message.body, Boolean(message.attachmentUrl)) ? (
+                      <p>{visibleMessageBody(message.body, Boolean(message.attachmentUrl))}</p>
+                    ) : null}
+                    <small>{formatMessageTime(message.createdAt)}</small>
                   </article>
                 ))}
 

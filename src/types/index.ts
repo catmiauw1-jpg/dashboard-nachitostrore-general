@@ -202,6 +202,8 @@ export interface ConversationMessage {
   body: string;
   createdAt?: string;
   source?: string;
+  attachmentUrl?: string;
+  attachmentType?: string;
 }
 
 export interface NavigationItem {

@@ -156,6 +156,25 @@ interface WaflowPayload {
       filename?: string;
       name?: string;
     }>;
+    image?: {
+      url?: string;
+      link?: string;
+      id?: string | number;
+      mime_type?: string;
+      mimeType?: string;
+      caption?: string;
+    };
+    document?: {
+      url?: string;
+      link?: string;
+      id?: string | number;
+      mime_type?: string;
+      mimeType?: string;
+      file_name?: string;
+      filename?: string;
+      name?: string;
+      caption?: string;
+    };
   };
   attachments?: Array<{
     data_url?: string;
@@ -288,13 +307,16 @@ function parseAttachmentDetails(payload: WaflowPayload) {
   const message = parseMessage(payload);
   const attachments = payload.attachments ?? message.attachments ?? [];
   const first = Array.isArray(attachments) ? attachments[0] : undefined;
+  const directImage = message.image;
+  const directDocument = message.document;
+  const direct = directImage ?? directDocument;
 
   return {
-    url: cleanText(first?.data_url ?? first?.file_url ?? first?.url ?? first?.link ?? first?.thumb_url, 500) || undefined,
-    mediaId: cleanText(first?.id, 120) || undefined,
-    type: cleanText(first?.type ?? message.type ?? message.message_type ?? payload.messageType ?? payload.type, 60) || undefined,
-    mimeType: cleanText(first?.mime_type ?? first?.mimeType, 120) || undefined,
-    fileName: cleanText(first?.file_name ?? first?.filename ?? first?.name, 180) || undefined
+    url: cleanText(first?.data_url ?? first?.file_url ?? first?.url ?? first?.link ?? first?.thumb_url ?? direct?.url ?? direct?.link, 500) || undefined,
+    mediaId: cleanText(first?.id ?? direct?.id, 120) || undefined,
+    type: cleanText(first?.type ?? (directImage ? "image" : undefined) ?? (directDocument ? "document" : undefined) ?? message.type ?? message.message_type ?? payload.messageType ?? payload.type, 60) || undefined,
+    mimeType: cleanText(first?.mime_type ?? first?.mimeType ?? direct?.mime_type ?? direct?.mimeType, 120) || undefined,
+    fileName: cleanText(first?.file_name ?? first?.filename ?? first?.name ?? directDocument?.file_name ?? directDocument?.filename ?? directDocument?.name, 180) || undefined
   };
 }
 
@@ -1597,7 +1619,7 @@ export async function POST(request: Request) {
       direction: fromMe ? "outbound" : "inbound",
       body: inboundBody,
       source: "waflow",
-      metadata: { raw: payload, attachmentUrl }
+      metadata: { raw: payload, attachmentUrl, attachmentDetails }
     });
 
     if (!botGlobalActive || !conversation.bot_active || fromMe) {
