@@ -7,6 +7,7 @@ import type { Order, OrderLineItem, OrderPriority, OrderStatus, OrderType, Payme
 
 interface OrdersSectionProps {
   orders: Order[];
+  onOpenCustomerChat: (order: Order) => void;
   onRegisterOrder: () => void;
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
 }
@@ -174,14 +175,12 @@ function deliveryLabel(order: Order) {
   return order.delivery === "Recoger" ? "Recoger en Santa Cruz" : "Santa Cruz · Yango/recoger";
 }
 
-function orderWhatsAppUrl(order?: Order) {
+function hasOrderWhatsApp(order?: Order) {
   const digits = order?.customerPhone?.replace(/\D/g, "") ?? "";
-  if (!digits) return "";
-  const phone = digits.startsWith("591") ? digits : digits.length === 8 ? `591${digits}` : digits;
-  return `https://wa.me/${phone}`;
+  return Boolean(digits);
 }
 
-export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: OrdersSectionProps) {
+export function OrdersSection({ orders, onOpenCustomerChat, onRegisterOrder, onUpdateOrder }: OrdersSectionProps) {
   const [activeFilter, setActiveFilter] = useState<"Todos" | OrderType>("Todos");
   const [activeStage, setActiveStage] = useState<StageFilter>("Activos");
   const [activeDelivery, setActiveDelivery] = useState<DeliveryFilter>("Todos");
@@ -678,10 +677,10 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
               ) : null}
 
               <div className="order-detail-actions">
-                {orderWhatsAppUrl(selectedOrder) ? (
-                  <a className="btn" href={orderWhatsAppUrl(selectedOrder)} rel="noreferrer" target="_blank">
+                {hasOrderWhatsApp(selectedOrder) ? (
+                  <button className="btn" onClick={() => onOpenCustomerChat(selectedOrder)} type="button">
                     Abrir chat del cliente
-                  </a>
+                  </button>
                 ) : (
                   <button className="btn" disabled type="button">
                     Sin WhatsApp

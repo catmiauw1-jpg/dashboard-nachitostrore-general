@@ -197,6 +197,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
   const [isDark, setIsDark] = useState(true);
   const [chats, setChats] = useState<Conversation[]>([]);
+  const [focusedWhatsAppPhone, setFocusedWhatsAppPhone] = useState("");
   const [orderList, setOrderList] = useState<Order[]>([]);
   const [customerList, setCustomerList] = useState<Customer[]>([]);
   const [expenseList, setExpenseList] = useState<Expense[]>([]);
@@ -210,6 +211,12 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
   const showToast = (message: string) => {
     setToast(message);
+  };
+
+  const normalizeChatPhone = (value?: string) => {
+    const digits = value?.replace(/\D/g, "") ?? "";
+    if (!digits) return "";
+    return digits.startsWith("591") ? digits : digits.length === 8 ? `591${digits}` : digits;
   };
 
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${accessToken}` }), [accessToken]);
@@ -482,6 +489,19 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     })();
 
     showToast(`Pedido ${orderId} actualizado.`);
+  };
+
+  const handleOpenOrderChat = (order: Order) => {
+    const phone = normalizeChatPhone(order.customerPhone);
+    if (!phone) {
+      showToast("Este pedido no tiene WhatsApp registrado.");
+      return;
+    }
+
+    const hasConversation = chats.some((chat) => normalizeChatPhone(chat.phone) === phone);
+    setFocusedWhatsAppPhone(phone);
+    setActiveSection("whatsapp");
+    showToast(hasConversation ? "Chat del cliente abierto." : "No encontre un chat guardado para este numero.");
   };
 
   const handleAddProduct = async (product: Product) => {
@@ -771,6 +791,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       return (
         <OrdersSection
           orders={orderList}
+          onOpenCustomerChat={handleOpenOrderChat}
           onRegisterOrder={() => setIsOrderModalOpen(true)}
           onUpdateOrder={handleUpdateOrder}
         />
@@ -800,6 +821,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       return (
         <WhatsAppSalesSection
           chats={chats}
+          focusedPhone={focusedWhatsAppPhone}
           orders={orderList}
           onSendManualMessage={handleSendManualMessage}
           onToggleBot={toggleBot}

@@ -2917,7 +2917,7 @@ body.dark .home-workspace .chat-item {
 
 .whatsapp-console-grid {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 280px;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -2943,6 +2943,11 @@ body.dark .home-workspace .chat-item {
 .whatsapp-console-payment {
   border-right: 0;
   border-left: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) var(--surface);
+  scrollbar-width: thin;
 }
 
 .whatsapp-console-title {
@@ -2980,6 +2985,8 @@ body.dark .home-workspace .chat-item {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) var(--surface);
+  scrollbar-width: thin;
 }
 
 .whatsapp-console-chat {
@@ -3084,6 +3091,32 @@ body.dark .home-workspace .chat-item {
   overscroll-behavior: contain;
   padding: 22px 16px;
   background: color-mix(in srgb, var(--bg) 72%, var(--surface) 28%);
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) var(--surface);
+  scrollbar-width: thin;
+}
+
+.whatsapp-console-list::-webkit-scrollbar,
+.whatsapp-console-thread::-webkit-scrollbar,
+.whatsapp-console-payment::-webkit-scrollbar,
+.compact-review-list::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.whatsapp-console-list::-webkit-scrollbar-track,
+.whatsapp-console-thread::-webkit-scrollbar-track,
+.whatsapp-console-payment::-webkit-scrollbar-track,
+.compact-review-list::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+.whatsapp-console-list::-webkit-scrollbar-thumb,
+.whatsapp-console-thread::-webkit-scrollbar-thumb,
+.whatsapp-console-payment::-webkit-scrollbar-thumb,
+.compact-review-list::-webkit-scrollbar-thumb {
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
 }
 
 .whatsapp-console-thread .wa-message {
@@ -3217,8 +3250,10 @@ body.dark .home-workspace .chat-item {
 }
 
 .compact-review-list {
-  max-height: 300px;
-  padding: 8px 12px;
+  max-height: 220px;
+  padding: 10px 12px 12px;
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) var(--surface);
+  scrollbar-width: thin;
 }
 
 .compact-review-list .payment-order-card {
@@ -3232,12 +3267,15 @@ body.dark .home-workspace .chat-item {
 }
 
 .compact-payment-detail {
-  padding: 0 12px 12px;
+  display: grid;
+  gap: 10px;
+  padding: 8px 12px 12px;
 }
 
 .compact-payment-detail .payment-detail-grid {
   grid-template-columns: 1fr 1fr;
   gap: 0;
+  margin-top: 0;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }

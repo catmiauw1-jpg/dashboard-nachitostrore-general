@@ -17,6 +17,7 @@ import type { Conversation, Order, OrderStatus, PaymentStatus } from "@/types";
 
 interface WhatsAppSalesSectionProps {
   chats: Conversation[];
+  focusedPhone?: string;
   orders: Order[];
   onToggleBot: (index: number) => void;
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
@@ -172,6 +173,7 @@ function isSameClient(order: Order, chat?: Conversation) {
 
 export function WhatsAppSalesSection({
   chats,
+  focusedPhone,
   orders,
   onToggleBot,
   onUpdateOrder,
@@ -251,6 +253,26 @@ export function WhatsAppSalesSection({
       setSelectedChatKey(conversationKey(chats[0]));
     }
   }, [chats, selectedChatKey]);
+
+  useEffect(() => {
+    const targetPhone = normalizePhone(focusedPhone);
+    const targetShortPhone = shortPhone(focusedPhone);
+    if (!targetPhone && !targetShortPhone) return;
+
+    const targetChat = chats.find((chat) => {
+      const chatPhone = normalizePhone(chat.phone);
+      const chatShortPhone = shortPhone(chat.phone);
+      return (
+        (targetPhone && chatPhone === targetPhone) ||
+        (targetShortPhone && chatShortPhone === targetShortPhone)
+      );
+    });
+
+    if (targetChat) {
+      setSelectedChatKey(conversationKey(targetChat));
+      setChatQuery("");
+    }
+  }, [chats, focusedPhone]);
 
   useEffect(() => {
     setSelectedOrderId(chatPaymentOrders[0]?.id ?? null);
