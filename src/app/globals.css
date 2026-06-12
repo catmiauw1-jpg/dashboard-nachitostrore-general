@@ -2845,7 +2845,11 @@ body.dark .home-workspace .chat-item {
 }
 
 .whatsapp-console-workspace {
+  height: calc(100dvh - 132px);
+  min-height: 720px;
   gap: 14px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .whatsapp-console-head {
@@ -2880,7 +2884,7 @@ body.dark .home-workspace .chat-item {
 .whatsapp-console-stats article {
   display: grid;
   gap: 6px;
-  min-height: 96px;
+  min-height: 84px;
   padding: 14px 16px;
   border-right: 1px solid var(--border);
 }
@@ -2914,7 +2918,7 @@ body.dark .home-workspace .chat-item {
 .whatsapp-console-grid {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) 280px;
-  min-height: 640px;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2972,8 +2976,10 @@ body.dark .home-workspace .chat-item {
 }
 
 .whatsapp-console-list {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .whatsapp-console-chat {
@@ -3030,6 +3036,8 @@ body.dark .home-workspace .chat-item {
 .whatsapp-console-chat-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .whatsapp-console-chat-head {
@@ -3068,10 +3076,12 @@ body.dark .home-workspace .chat-item {
 
 .whatsapp-console-thread {
   display: flex;
+  height: 100%;
   min-height: 0;
   flex-direction: column;
   gap: 36px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 22px 16px;
   background: color-mix(in srgb, var(--bg) 72%, var(--surface) 28%);
 }
@@ -3172,6 +3182,8 @@ body.dark .home-workspace .chat-item {
 
 .whatsapp-console-payment {
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .compact-review-list {
@@ -5674,6 +5686,12 @@ body.dark .field select option {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .whatsapp-console-workspace {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
   .config-grid,
   .whatsapp-chat-shell,
   .whatsapp-manager-grid,
@@ -5709,7 +5727,9 @@ body.dark .field select option {
   }
 
   .whatsapp-console-thread {
-    min-height: 480px;
+    height: auto;
+    min-height: 420px;
+    max-height: 62vh;
   }
 }
 

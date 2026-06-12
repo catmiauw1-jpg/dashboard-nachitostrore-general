@@ -420,8 +420,25 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       throw new Error("No se pudo guardar el mensaje manual.");
     }
 
-    setChats((await response.json()) as Conversation[]);
-    showToast("Mensaje manual guardado en el chat.");
+    const payload = (await response.json()) as
+      | Conversation[]
+      | {
+          conversations?: Conversation[];
+          sendStatus?: { sent?: boolean; reason?: string };
+        };
+    const nextChats = Array.isArray(payload) ? payload : payload.conversations ?? [];
+
+    setChats(nextChats);
+
+    if (!Array.isArray(payload) && payload.sendStatus?.sent) {
+      showToast("Mensaje enviado por WhatsApp.");
+    } else if (!Array.isArray(payload) && payload.sendStatus?.reason === "missing_ycloud_config") {
+      showToast("Mensaje guardado. Falta configurar YCloud para enviarlo.");
+    } else if (!Array.isArray(payload) && payload.sendStatus?.reason) {
+      showToast("Mensaje guardado, pero YCloud no lo pudo enviar.");
+    } else {
+      showToast("Mensaje manual guardado en el chat.");
+    }
   };
 
   const getNextOrderNumber = () => {
