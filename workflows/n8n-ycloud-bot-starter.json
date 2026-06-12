@@ -194,7 +194,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const normalized = $('Normalize YCloud Event').first().json;\nconst ai = $input.first().json || {};\nconst proofEvidence = ai.proofEvidence || {};\nconst proofText = ai.proofText || normalized.proofText || '';\nreturn [{\n  json: {\n    ...normalized,\n    proofText,\n    ocrText: proofText,\n    proofEvidence,\n    proofAi: {\n      available: Boolean(ai.aiAvailable),\n      reason: ai.aiReason || ai.reason || null\n    }\n  }\n}];"
+        "jsCode": "const enriched = $('Attach AI Intent').first().json;\nconst ai = $input.first().json || {};\nconst proofEvidence = ai.proofEvidence || {};\nconst proofText = ai.proofText || enriched.proofText || '';\nreturn [{\n  json: {\n    ...enriched,\n    proofText,\n    ocrText: proofText,\n    proofEvidence,\n    proofAi: {\n      available: Boolean(ai.aiAvailable),\n      reason: ai.aiReason || ai.reason || null\n    }\n  }\n}];"
       },
       "id": "e4d7b315-45db-4473-bcc5-5ea3f6d3c042",
       "name": "Attach AI Proof Evidence",
@@ -203,6 +203,62 @@
       "position": [
         -160,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({\n  cliente: $json.customerName || $json.name || 'Cliente WhatsApp',\n  telefono: $json.phone || $json.from || '',\n  mensaje: $json.messageText || $json.text || '',\n  tipo: $json.message?.type || 'text',\n  tieneAdjunto: Array.isArray($json.message?.attachments) && $json.message.attachments.length > 0,\n  adjuntos: $json.message?.attachments || [],\n  evento: $json.event || ''\n}) }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "Eres el clasificador de intenciones para el bot de ventas de Nachito Store por WhatsApp.\nDevuelve SOLO JSON valido, sin markdown, sin explicaciones y sin texto extra.\nNo inventes precios, productos ni pagos. No confirmes pagos. No modifiques stock.\nTu trabajo es entender lo que el cliente quiso decir aunque escriba con errores.\n\nIntenciones permitidas:\n- greeting: saludo o pregunta general sin pedido\n- unknown: no se entiende\n- confirm: confirma que el pedido esta bien o que quiere avanzar\n- cancel: quiere cancelar, dejar, anular o ya no quiere el pedido\n- fresh_order: quiere hacer otro pedido, pedido nuevo, empezar de nuevo o se equivoco\n- change: quiere cambiar color, talla, prenda o corregir el pedido\n- human: pide persona, vendedor o atencion humana\n- half_payment: quiere pagar 50%, mitad o adelanto\n- full_payment: quiere pagar completo, todo o total\n- payment_proof: solo si hay archivo adjunto o comprobante adjunto\n- faq: pregunta sobre tiempos, envio, tallas, precios o stock\n\nReglas de seguridad:\n- Usa payment_proof solo si tieneAdjunto es true.\n- Si hay duda, usa unknown con confidence bajo.\n- Para cancelar/cambiar/nuevo pedido, acepta frases naturales como: cancelar, cancelalo, me equivoque, pedido nuevo, otro pedido, quiero rehacerlo.\n- Para confirmar, acepta: si, si esta bien, correcto, perfecto, dale, ok, listo.\n- Para pago 50%, acepta: mitad, 50, adelanto, medio pago.\n- Para pago completo, acepta: completo, todo, total, pago completo.\n\nFormato obligatorio:\n{\"intent\":\"unknown\",\"confidence\":0.0,\"safeToUse\":false,\"reason\":\"\",\"paymentChoice\":null,\"deliveryZone\":null,\"department\":null,\"normalizedText\":\"\"}",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false,
+          "enableStreaming": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -400,
+        -260
+      ],
+      "id": "98f11529-ca9b-4227-b41f-93a3d4d7c403",
+      "name": "AI Intent Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "google/gemma-4-31b-it:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -80
+      ],
+      "id": "6aac568e-4a55-41ca-9d2c-b92dbdc7ab7f",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "fZBAqAMRSFTMx6Rc",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const normalized = $('Normalize YCloud Event').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nlet parsed = null;\nconst jsonMatch = raw.match(/{[sS]*}/);\ntry {\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);\n} catch (error) {\n  parsed = null;\n}\nconst allowed = new Set(['greeting','unknown','confirm','cancel','change','fresh_order','human','half_payment','full_payment','payment_proof','faq']);\nconst confidence = Number(parsed?.confidence || 0);\nconst hasAttachment = Array.isArray(normalized.message?.attachments) && normalized.message.attachments.length > 0;\nconst intent = allowed.has(parsed?.intent) ? parsed.intent : 'unknown';\nconst safeIntent = intent === 'payment_proof' && !hasAttachment ? 'unknown' : intent;\nconst aiIntent = {\n  intent: safeIntent,\n  confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,\n  safeToUse: parsed?.safeToUse !== false,\n  reason: String(parsed?.reason || raw || '').slice(0, 500),\n  paymentChoice: parsed?.paymentChoice === '50%' || parsed?.paymentChoice === 'completo' ? parsed.paymentChoice : null,\n  deliveryZone: parsed?.deliveryZone === 'santa_cruz' || parsed?.deliveryZone === 'otro_departamento' ? parsed.deliveryZone : null,\n  department: parsed?.department ? String(parsed.department).slice(0, 80) : null,\n  normalizedText: parsed?.normalizedText ? String(parsed.normalizedText).slice(0, 500) : ''\n};\nreturn [{ json: { ...normalized, aiIntent } }];"
+      },
+      "id": "c38f2448-5f2f-4ee4-bfda-7b7fd69fda3c",
+      "name": "Attach AI Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -260
       ]
     }
   ],
@@ -222,7 +278,7 @@
       "main": [
         [
           {
-            "node": "Extract Payment Proof with AI",
+            "node": "AI Intent Agent",
             "type": "main",
             "index": 0
           }
@@ -297,6 +353,39 @@
           {
             "node": "Run Bot in PoleraFlow",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Intent Agent": {
+      "main": [
+        [
+          {
+            "node": "Attach AI Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach AI Intent": {
+      "main": [
+        [
+          {
+            "node": "Extract Payment Proof with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Intent Agent",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]

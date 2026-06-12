@@ -81,6 +81,17 @@ type CustomerIntent =
   | "faq"
   | "unknown";
 
+interface AiIntentPayload {
+  intent?: CustomerIntent;
+  confidence?: number;
+  reason?: string;
+  normalizedText?: string;
+  safeToUse?: boolean;
+  paymentChoice?: "50%" | "completo" | null;
+  deliveryZone?: "santa_cruz" | "otro_departamento" | null;
+  department?: string | null;
+}
+
 interface WaflowPayload {
   account?: {
     id?: string | number;
@@ -99,6 +110,14 @@ interface WaflowPayload {
   from?: string;
   customerPhone?: string;
   customerName?: string;
+  aiIntent?: AiIntentPayload;
+  ai_intent?: AiIntentPayload;
+  ai?: {
+    intent?: AiIntentPayload | CustomerIntent;
+    confidence?: number;
+    safeToUse?: boolean;
+    reason?: string;
+  };
   name?: string;
   fromMe?: boolean;
   messageType?: string;
@@ -891,6 +910,85 @@ function detectCustomerIntent(text: string, state: BotState, messageType: string
   return "unknown";
 }
 
+const customerIntentValues = new Set<CustomerIntent>([
+  "web_order",
+  "confirm",
+  "cancel",
+  "change",
+  "fresh_order",
+  "human",
+  "half_payment",
+  "full_payment",
+  "payment_proof",
+  "greeting",
+  "faq",
+  "unknown"
+]);
+
+function isCustomerIntentValue(value: unknown): value is CustomerIntent {
+  return typeof value === "string" && customerIntentValues.has(value as CustomerIntent);
+}
+
+function parseAiIntent(payload: WaflowPayload): AiIntentPayload | null {
+  const candidate = payload.aiIntent ?? payload.ai_intent ?? payload.ai?.intent;
+  if (!candidate) return null;
+
+  if (isCustomerIntentValue(candidate)) {
+    return {
+      intent: candidate,
+      confidence: typeof payload.ai?.confidence === "number" ? payload.ai.confidence : undefined,
+      reason: payload.ai?.reason,
+      safeToUse: payload.ai?.safeToUse
+    };
+  }
+
+  if (typeof candidate !== "object") return null;
+  const intent = isCustomerIntentValue(candidate.intent) ? candidate.intent : undefined;
+  if (!intent) return null;
+
+  const confidence = Number(candidate.confidence);
+  return {
+    ...candidate,
+    intent,
+    confidence: Number.isFinite(confidence) ? confidence : undefined
+  };
+}
+
+function chooseEffectiveIntent(
+  ruleIntent: CustomerIntent,
+  aiIntent: AiIntentPayload | null,
+  state: BotState,
+  hasAttachment: boolean
+): CustomerIntent {
+  if (ruleIntent === "web_order" || ruleIntent === "payment_proof") return ruleIntent;
+  if (!aiIntent?.intent || aiIntent.safeToUse === false) return ruleIntent;
+
+  const confidence = typeof aiIntent.confidence === "number" ? aiIntent.confidence : 0;
+  if (confidence < 0.78) return ruleIntent;
+
+  if (aiIntent.intent === "payment_proof") {
+    return hasAttachment ? "payment_proof" : ruleIntent;
+  }
+
+  if (["cancel", "change", "fresh_order", "human"].includes(aiIntent.intent)) {
+    return aiIntent.intent;
+  }
+
+  if (state.stage === "esperando_tipo_pago" && ["half_payment", "full_payment"].includes(aiIntent.intent)) {
+    return aiIntent.intent;
+  }
+
+  if (state.stage === "esperando_confirmacion" && aiIntent.intent === "confirm") {
+    return "confirm";
+  }
+
+  if (["unknown", "greeting", "faq"].includes(ruleIntent) && aiIntent.intent !== "unknown") {
+    return aiIntent.intent;
+  }
+
+  return ruleIntent;
+}
+
 function buildFaqReply(text: string, state: BotState) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return "";
@@ -1323,12 +1421,14 @@ function nextBotStateV2(
   text: string,
   customerName: string,
   messageType: string,
-  hasAttachment = false
+  hasAttachment = false,
+  aiIntent: AiIntentPayload | null = null
 ): BotDecision {
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
   const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
-  const intent = detectCustomerIntent(text, state, messageType, hasAttachment);
+  const ruleIntent = detectCustomerIntent(text, state, messageType, hasAttachment);
+  const intent = chooseEffectiveIntent(ruleIntent, aiIntent, state, hasAttachment);
   const confirmsOrder = intent === "confirm";
   const cancelsOrder = intent === "cancel";
   const wantsOrderChange = intent === "change";
@@ -1557,6 +1657,7 @@ export async function POST(request: Request) {
     const attachmentUrl = attachmentDetails.url;
     const proofText = parseProofText(payload, text);
     const proofEvidence = parseIncomingProofEvidence(payload, proofText);
+    const aiIntent = parseAiIntent(payload);
     const incomingOrderPreview = looksLikeWebOrderMessage(text) ? parseOrder(text) : undefined;
 
     if (!phone) {
@@ -1650,7 +1751,8 @@ export async function POST(request: Request) {
       text,
       botCustomerName,
       messageType,
-      Boolean(attachmentUrl)
+      Boolean(attachmentUrl),
+      aiIntent
     );
     const replyMessages = splitReplyMessages(replyText);
     const canceledOrder = cancelOpenOrder
@@ -1686,7 +1788,8 @@ export async function POST(request: Request) {
         paymentAmount: state.paymentAmount,
         needsHuman,
         messageType,
-        hasAttachment: Boolean(attachmentUrl)
+        hasAttachment: Boolean(attachmentUrl),
+        aiIntent
       }
     });
 
