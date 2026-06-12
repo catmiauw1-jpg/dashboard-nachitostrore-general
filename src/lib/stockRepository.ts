@@ -2,7 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase";
 import type { Product, StockItem } from "@/types";
 
 const BASE_PRODUCT_ID = "base-polera-dtf";
-const BASE_PRODUCT_NAME = "Polera base DTF";
+const BASE_PRODUCT_NAME = "Polera para DTF";
 const sizeOrder = ["M", "L", "XL"];
 const colorOrder = ["Blanco arena", "Negro"];
 

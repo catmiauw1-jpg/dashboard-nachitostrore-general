@@ -27,7 +27,7 @@ export function WhatsAppBotPanel({
       <div className="panel-header">
         <div>
           <h3><IconBrandWhatsapp size={17} stroke={1.7} />WhatsApp / Bot</h3>
-          <p>Estado por conversacion</p>
+          <p>Estado por conversación</p>
         </div>
       </div>
 
@@ -40,10 +40,16 @@ export function WhatsAppBotPanel({
               <small>{chat.phone}</small>
             </span>
             <span className={`bot-tag ${chat.alert ? "tag-warn" : chat.bot ? "tag-on" : "tag-off"}`}>
-              {chat.alert ? "Requiere atencion" : chat.bot ? "Bot on" : "Bot off"}
+              {chat.alert ? "Requiere atención" : chat.bot ? "Bot on" : "Bot off"}
             </span>
           </button>
         ))}
+        {!chats.length ? (
+          <div className="empty-state compact-empty">
+            <strong>Sin chats reales</strong>
+            <p>Los mensajes nuevos de WhatsApp apareceran aqui.</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="card-footer">

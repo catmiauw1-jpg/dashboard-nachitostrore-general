@@ -19,7 +19,7 @@ export function Topbar({ adminEmail, isDark, onRegisterOrder, onSignOut, onToggl
     <div className="topbar">
       <div className="topbar-left">
         <div>
-          <h2>Buenos dias</h2>
+          <h2>Buenos días</h2>
           <p>{today}</p>
         </div>
       </div>

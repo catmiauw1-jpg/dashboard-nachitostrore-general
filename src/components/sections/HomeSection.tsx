@@ -35,8 +35,8 @@ export function HomeSection({
     {
       label: activeOrders.length === 1 ? "Pedido activo hoy" : "Pedidos activos hoy",
       value: String(activeOrders.length),
-      sub: "En cobro, preparacion o entrega",
-      tag: activeOrders.length ? "Activo" : "Al dia",
+      sub: "En cobro, preparación o entrega",
+      tag: activeOrders.length ? "Activo" : "Al día",
       tone: activeOrders.length ? "featured" : "",
       Icon: IconBasket
     },
@@ -47,7 +47,7 @@ export function HomeSection({
         label: metric.label,
         value: metric.value,
         sub: metric.details.join(" - "),
-        tag: index === 0 ? "Hoy" : index === 1 ? "7 dias" : "Est.",
+        tag: index === 0 ? "Hoy" : index === 1 ? "7 días" : "Est.",
         tone: "",
         Icon: index === 0 ? IconCurrencyDollar : index === 1 ? IconTrendingUp : IconCoins
       }))
@@ -81,7 +81,7 @@ export function HomeSection({
 
       <section>
         <div className="home-section-head">
-          <span>Que necesita atencion</span>
+          <span>Qué necesita atención</span>
         </div>
         <div className="attention-grid">
           <button className="attention-card attention-action" onClick={() => onNavigate("pedidos")} type="button">
@@ -95,8 +95,8 @@ export function HomeSection({
           <button className="attention-card attention-action" onClick={() => onNavigate("pedidos")} type="button">
             <span className="attention-dot dot-action" />
             <div className="attention-body">
-              <strong>En preparacion</strong>
-              <p>Trabajos que necesitan produccion.</p>
+              <strong>En preparación</strong>
+              <p>Trabajos que necesitan producción.</p>
             </div>
             <span className="attention-count">{inProduction.length}</span>
           </button>
@@ -104,7 +104,7 @@ export function HomeSection({
             <span className={`attention-dot ${lowStock.length ? "dot-warn" : "dot-ok"}`} />
             <div className="attention-body">
               <strong>Stock bajo</strong>
-              <p>{lowStock.length ? "Prendas con pocas unidades." : "Inventario dentro del minimo."}</p>
+              <p>{lowStock.length ? "Prendas con pocas unidades." : "Inventario dentro del mínimo."}</p>
             </div>
             <span className="attention-count">{lowStock.length}</span>
           </button>

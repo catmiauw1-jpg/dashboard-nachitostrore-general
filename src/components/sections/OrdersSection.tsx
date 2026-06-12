@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
-import type { Order, OrderLineItem, OrderStatus, OrderType, PaymentStatus } from "@/types";
+import { estimateBusinessDelivery } from "@/lib/businessDays";
+import type { Order, OrderLineItem, OrderPriority, OrderStatus, OrderType, PaymentStatus } from "@/types";
 
 interface OrdersSectionProps {
   orders: Order[];
@@ -10,11 +11,15 @@ interface OrdersSectionProps {
   onUpdateOrder: (orderId: string, updates: Partial<Order>) => void;
 }
 
+type DeliveryFilter = "Todos" | "Santa Cruz" | "Fuera de Santa Cruz";
+
 type StageFilter = "Activos" | "Esperando pago" | "En preparación" | "Listos";
 
 const orderFilters: Array<"Todos" | OrderType> = ["Todos", "Catálogo", "Personalizada"];
 const stageFilters: StageFilter[] = ["Activos", "Esperando pago", "En preparación", "Listos"];
 const paymentStatuses: PaymentStatus[] = ["Pendiente", "50% pagado", "Pago completo"];
+const priorityOptions: OrderPriority[] = ["Normal", "Alta", "Urgente"];
+const deliveryFilters: DeliveryFilter[] = ["Todos", "Santa Cruz", "Fuera de Santa Cruz"];
 const orderStatuses: OrderStatus[] = [
   "Esperando pago",
   "En preparación",
@@ -25,7 +30,7 @@ const orderStatuses: OrderStatus[] = [
 
 const quickSteps: Array<{ label: string; status: OrderStatus; helper: string }> = [
   { label: "Pago pendiente", status: "Esperando pago", helper: "Aún falta confirmar" },
-  { label: "Preparar", status: "En preparación", helper: "Descuenta stock" },
+  { label: "Preparar", status: "En preparación", helper: "Stock reservado" },
   { label: "Listo", status: "Lista para enviar", helper: "Para entregar" },
   { label: "Entregado", status: "Entregado", helper: "Cierra pedido" }
 ];
@@ -49,6 +54,47 @@ function formatOrderDate(value?: string) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date);
+}
+
+function formatSimpleDate(value?: string) {
+  if (!value) return "Por confirmar";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "Por confirmar";
+
+  return new Intl.DateTimeFormat("es-BO", {
+    day: "numeric",
+    month: "short"
+  }).format(date);
+}
+
+function priorityRank(priority?: OrderPriority) {
+  if (priority === "Urgente") return 0;
+  if (priority === "Alta") return 1;
+  return 2;
+}
+
+function deliverySortTime(order: Order) {
+  if (order.promisedDeliveryDate) {
+    const promised = new Date(`${order.promisedDeliveryDate}T12:00:00`).getTime();
+    if (!Number.isNaN(promised)) return promised;
+  }
+
+  return estimateBusinessDelivery(order.createdAt)?.sortTime ?? Number.MAX_SAFE_INTEGER;
+}
+
+function deliveryDisplay(order: Order) {
+  if (order.promisedDeliveryDate) {
+    return {
+      label: formatSimpleDate(order.promisedDeliveryDate),
+      source: "Prometida"
+    };
+  }
+
+  const estimate = estimateBusinessDelivery(order.createdAt);
+  return {
+    label: estimate ? estimate.label : "Por confirmar",
+    source: "Estimado"
+  };
 }
 
 function orderItems(order: Order): OrderLineItem[] {
@@ -114,9 +160,31 @@ function firstOrderLine(order: Order, items: OrderLineItem[]) {
     .join(", ");
 }
 
+function orderDeliveryArea(order: Order): DeliveryFilter {
+  if (order.deliveryArea === "Otro departamento" || order.delivery === "Flota") return "Fuera de Santa Cruz";
+  if (order.deliveryArea === "Santa Cruz" || order.delivery === "Yango" || order.delivery === "Recoger") return "Santa Cruz";
+  return "Santa Cruz";
+}
+
+function deliveryLabel(order: Order) {
+  if (orderDeliveryArea(order) === "Fuera de Santa Cruz") {
+    return order.deliveryDepartment ? `Flota · ${order.deliveryDepartment}` : "Flota · Departamento por confirmar";
+  }
+
+  return order.delivery === "Recoger" ? "Recoger en Santa Cruz" : "Santa Cruz · Yango/recoger";
+}
+
+function orderWhatsAppUrl(order?: Order) {
+  const digits = order?.customerPhone?.replace(/\D/g, "") ?? "";
+  if (!digits) return "";
+  const phone = digits.startsWith("591") ? digits : digits.length === 8 ? `591${digits}` : digits;
+  return `https://wa.me/${phone}`;
+}
+
 export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: OrdersSectionProps) {
   const [activeFilter, setActiveFilter] = useState<"Todos" | OrderType>("Todos");
   const [activeStage, setActiveStage] = useState<StageFilter>("Activos");
+  const [activeDelivery, setActiveDelivery] = useState<DeliveryFilter>("Todos");
   const [query, setQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [previewReference, setPreviewReference] = useState<string | null>(null);
@@ -126,16 +194,24 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
 
     return orders.filter((order) => {
       const matchesType = activeFilter === "Todos" || order.type === activeFilter;
+      const matchesDelivery = activeDelivery === "Todos" || orderDeliveryArea(order) === activeDelivery;
       const matchesSearch = !normalizedQuery || orderSearchText(order).includes(normalizedQuery);
 
-      return matchesType && matchesSearch;
+      return matchesType && matchesDelivery && matchesSearch;
     });
-  }, [activeFilter, orders, query]);
+  }, [activeDelivery, activeFilter, orders, query]);
 
-  const displayedOrders = visibleOrders.filter((order) => matchesStage(order, activeStage));
+  const displayedOrders = visibleOrders
+    .filter((order) => matchesStage(order, activeStage))
+    .sort((first, second) => {
+      const firstDate = deliverySortTime(first);
+      const secondDate = deliverySortTime(second);
+      if (firstDate !== secondDate) return firstDate - secondDate;
+      const priorityDiff = priorityRank(first.priority) - priorityRank(second.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(first.createdAt ?? 0).getTime() - new Date(second.createdAt ?? 0).getTime();
+    });
   const activeOrders = orders.filter((order) => order.status !== "Entregado" && order.status !== "Cancelado");
-  const completedOrders = orders.filter((order) => order.status === "Entregado");
-  const canceledOrders = orders.filter((order) => order.status === "Cancelado");
   const customWebOrders = orders.filter(
     (order) =>
       order.type === "Personalizada" &&
@@ -144,9 +220,16 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
       order.status !== "Entregado"
   );
   const readyOrders = orders.filter((order) => order.status === "Lista para enviar").length;
+  const outsideSczOrders = orders.filter(
+    (order) =>
+      orderDeliveryArea(order) === "Fuera de Santa Cruz" &&
+      order.status !== "Cancelado" &&
+      order.status !== "Entregado"
+  ).length;
   const pendingPayments = orders.filter((order) => order.payment !== "Pago completo" && order.status !== "Cancelado").length;
   const selectedOrder = selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : undefined;
   const selectedItems = selectedOrder ? orderItems(selectedOrder) : [];
+  const selectedDeliveryEstimate = estimateBusinessDelivery(selectedOrder?.createdAt);
   const selectedTotal = selectedOrder?.total ?? selectedItems.reduce((sum, item) => sum + item.lineTotal, 0);
   const activeSalesTotal = orders
     .filter((order) => order.status !== "Cancelado")
@@ -226,9 +309,9 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           <small>Para entregar o enviar</small>
         </article>
         <article className="section-summary-card">
-          <span>Pagos pendientes</span>
-          <strong>{pendingPayments}</strong>
-          <small>{formatCurrency(activeSalesTotal)} registrados</small>
+          <span>Fuera de Santa Cruz</span>
+          <strong>{outsideSczOrders}</strong>
+          <small>Pedidos para coordinar por flota</small>
         </article>
       </div>
 
@@ -276,12 +359,26 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                 </button>
               ))}
             </div>
+
+            <div className="stage-filter delivery-filter" aria-label="Filtrar por entrega">
+              {deliveryFilters.map((filter) => (
+                <button
+                  className={activeDelivery === filter ? "active" : undefined}
+                  key={filter}
+                  onClick={() => setActiveDelivery(filter)}
+                  type="button"
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="production-list">
             {displayedOrders.map((order) => {
               const items = orderItems(order);
               const isSelected = selectedOrder?.id === order.id;
+              const deliveryPlan = deliveryDisplay(order);
 
               return (
                 <button
@@ -300,6 +397,10 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                     </div>
 
                     <p>{order.customer} · {formatOrderDate(order.createdAt)}</p>
+                    <div className="order-delivery-hint">
+                      <span>{deliveryPlan.source}</span>
+                      <strong>{deliveryPlan.label}</strong>
+                    </div>
                     <strong className="order-list-products">
                       {firstOrderLine(order, items)}
                       {items.length > 2 ? ` +${items.length - 2}` : ""}
@@ -309,6 +410,12 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                       <div className="order-chip-row">
                         <span>{order.prendas} {order.prendas === 1 ? "prenda" : "prendas"}</span>
                         <span>{formatCurrency(order.total)}</span>
+                        <span className={orderDeliveryArea(order) === "Fuera de Santa Cruz" ? "delivery-chip outside" : "delivery-chip local"}>
+                          {deliveryLabel(order)}
+                        </span>
+                        <span className={`priority-chip ${order.priority?.toLowerCase() ?? "normal"}`}>
+                          {order.priority ?? "Normal"}
+                        </span>
                         <span className={badgeClass(order.payment)}>{order.payment}</span>
                         <span className={badgeClass(order.status)}>{order.status}</span>
                       </div>
@@ -347,12 +454,34 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                   <strong>{formatOrderDate(selectedOrder.createdAt)}</strong>
                 </div>
 
+                <div className="order-detail-time delivery-estimate-card">
+                  <span>Entrega estimada</span>
+                  <strong>{selectedDeliveryEstimate ? selectedDeliveryEstimate.label : "Por confirmar"}</strong>
+                  <small>Cuenta 2 a 4 dias habiles, sin sabado ni domingo.</small>
+                </div>
+
+                <div className="order-detail-time delivery-estimate-card promised-date-card">
+                  <span>Fecha prometida</span>
+                  <strong>{formatSimpleDate(selectedOrder.promisedDeliveryDate)}</strong>
+                  <small>{selectedOrder.promisedDeliveryDate ? "Esta fecha manda en la cola." : "Opcional para promesas al cliente."}</small>
+                </div>
+
                 <div className="order-detail-total">
                   <span>Total</span>
                   <strong>{formatCurrency(selectedTotal)}</strong>
                   <small>{selectedOrder.prendas} {selectedOrder.prendas === 1 ? "prenda" : "prendas"}</small>
                   <small className={selectedOrder.stockDeducted ? "stock-deducted" : "stock-pending"}>
-                    {selectedOrder.stockDeducted ? "Stock descontado" : "Stock pendiente"}
+                    {selectedOrder.stockDeducted ? "Stock reservado" : "Stock pendiente"}
+                  </small>
+                </div>
+
+                <div className="order-detail-time delivery-estimate-card">
+                  <span>Entrega</span>
+                  <strong>{deliveryLabel(selectedOrder)}</strong>
+                  <small>
+                    {orderDeliveryArea(selectedOrder) === "Fuera de Santa Cruz"
+                      ? "Coordinar datos para envio por flota."
+                      : "Coordinar Yango o recojo local."}
                   </small>
                 </div>
               </div>
@@ -379,6 +508,59 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
               </div>
 
               <div className="order-control-grid detail-controls">
+                <label>
+                  <span>Prioridad</span>
+                  <select
+                    className={`inline-select priority-${(selectedOrder.priority ?? "Normal").toLowerCase()}`}
+                    onChange={(event) =>
+                      onUpdateOrder(selectedOrder.id, { priority: event.target.value as OrderPriority })
+                    }
+                    value={selectedOrder.priority ?? "Normal"}
+                  >
+                    {priorityOptions.map((priority) => (
+                      <option key={priority} value={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Fecha prometida</span>
+                  <input
+                    className="inline-input"
+                    onChange={(event) => onUpdateOrder(selectedOrder.id, { promisedDeliveryDate: event.target.value })}
+                    type="date"
+                    value={selectedOrder.promisedDeliveryDate ?? ""}
+                  />
+                </label>
+
+                <label>
+                  <span>Zona de entrega</span>
+                  <select
+                    className="inline-select info"
+                    onChange={(event) => {
+                      const nextArea = event.target.value as "Santa Cruz" | "Otro departamento";
+                      onUpdateOrder(selectedOrder.id, {
+                        deliveryArea: nextArea,
+                        delivery: nextArea === "Otro departamento" ? "Flota" : "Yango"
+                      });
+                    }}
+                    value={selectedOrder.deliveryArea ?? (orderDeliveryArea(selectedOrder) === "Fuera de Santa Cruz" ? "Otro departamento" : "Santa Cruz")}
+                  >
+                    <option value="Santa Cruz">Santa Cruz</option>
+                    <option value="Otro departamento">Otro departamento</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Departamento</span>
+                  <input
+                    className="inline-input"
+                    onChange={(event) => onUpdateOrder(selectedOrder.id, { deliveryDepartment: event.target.value })}
+                    placeholder="Ej: Cochabamba"
+                    value={selectedOrder.deliveryDepartment ?? ""}
+                  />
+                </label>
+
                 <label>
                   <span>Pago</span>
                   <select
@@ -495,13 +677,24 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
                 </div>
               ) : null}
 
-              <button
-                className="btn danger subtle-cancel"
-                onClick={() => updateStatus(selectedOrder.id, "Cancelado")}
-                type="button"
-              >
-                Cancelar pedido
-              </button>
+              <div className="order-detail-actions">
+                {orderWhatsAppUrl(selectedOrder) ? (
+                  <a className="btn" href={orderWhatsAppUrl(selectedOrder)} rel="noreferrer" target="_blank">
+                    Abrir chat del cliente
+                  </a>
+                ) : (
+                  <button className="btn" disabled type="button">
+                    Sin WhatsApp
+                  </button>
+                )}
+                <button
+                  className="btn danger subtle-cancel"
+                  onClick={() => updateStatus(selectedOrder.id, "Cancelado")}
+                  type="button"
+                >
+                  Cancelar pedido
+                </button>
+              </div>
             </>
           ) : (
             <div className="empty-state order-detail-empty">
@@ -511,88 +704,6 @@ export function OrdersSection({ orders, onRegisterOrder, onUpdateOrder }: Orders
           )}
         </aside>
       </div>
-
-      <article className="panel order-history-panel">
-        <div className="panel-header">
-          <div>
-            <span className="section-kicker">Historial</span>
-            <h3>Pedidos cerrados</h3>
-            <p>Separado para revisar lo que ya se entregó y lo que se canceló sin mezclarlo con preparación.</p>
-          </div>
-        </div>
-
-        <div className="order-history-grid">
-          <div className="order-history-column">
-            <div className="order-history-heading">
-              <h4>Entregados</h4>
-              <span className="badge success">{completedOrders.length}</span>
-            </div>
-
-            <div className="order-history-list">
-              {completedOrders.slice(0, 8).map((order) => {
-                const items = orderItems(order);
-
-                return (
-                  <button
-                    className="history-order-card"
-                    key={order.id}
-                    onClick={() => setSelectedOrderId(order.id)}
-                    type="button"
-                  >
-                    <div>
-                      <strong>{order.id}</strong>
-                      <p>{mainOrderTitle(order, items)} · {formatOrderDate(order.createdAt)}</p>
-                    </div>
-                    <span>{formatCurrency(order.total)}</span>
-                  </button>
-                );
-              })}
-
-              {!completedOrders.length ? (
-                <div className="empty-state compact-empty">
-                  <strong>Sin entregados</strong>
-                  <p>Cuando marques pedidos como entregados aparecerán aquí.</p>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="order-history-column">
-            <div className="order-history-heading">
-              <h4>Cancelados</h4>
-              <span className="badge danger">{canceledOrders.length}</span>
-            </div>
-
-            <div className="order-history-list">
-              {canceledOrders.slice(0, 8).map((order) => {
-                const items = orderItems(order);
-
-                return (
-                  <button
-                    className="history-order-card canceled"
-                    key={order.id}
-                    onClick={() => setSelectedOrderId(order.id)}
-                    type="button"
-                  >
-                    <div>
-                      <strong>{order.id}</strong>
-                      <p>{mainOrderTitle(order, items)} · {formatOrderDate(order.createdAt)}</p>
-                    </div>
-                    <span>{formatCurrency(order.total)}</span>
-                  </button>
-                );
-              })}
-
-              {!canceledOrders.length ? (
-                <div className="empty-state compact-empty">
-                  <strong>Sin cancelados</strong>
-                  <p>Los cancelados se limpian automáticamente cada 24 horas.</p>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </article>
 
       {previewReference ? (
         <div className="image-preview-backdrop" onClick={() => setPreviewReference(null)} role="presentation">

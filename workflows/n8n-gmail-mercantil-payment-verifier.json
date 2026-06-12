@@ -1,0 +1,234 @@
+{
+  "id": "cbd7a163-e53b-4d07-b3dd-b1819e2d1c7d",
+  "name": "PoleraFlow Gmail Mercantil Payment Verifier",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "oAuth2",
+        "event": "messageReceived",
+        "simple": false,
+        "filters": {
+          "q": "from:bmscsa@bmsc.com.bo subject:Notificaciones newer_than:2d",
+          "sender": "bmscsa@bmsc.com.bo",
+          "readStatus": "both"
+        },
+        "options": {}
+      },
+      "id": "85242d95-b770-41f0-8f6a-7d7fb079edc1",
+      "name": "Gmail Mercantil Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const email = $json;\n\nfunction decodeBase64Url(value) {\n  if (!value) return '';\n  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');\n  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');\n  return Buffer.from(padded, 'base64').toString('utf8');\n}\n\nfunction collectParts(part, output = []) {\n  if (!part) return output;\n  if (part.mimeType && part.body?.data) {\n    output.push({ mimeType: part.mimeType, text: decodeBase64Url(part.body.data) });\n  }\n  if (Array.isArray(part.parts)) {\n    for (const child of part.parts) collectParts(child, output);\n  }\n  return output;\n}\n\nconst headers = Object.fromEntries((email.payload?.headers || []).map((header) => [String(header.name || '').toLowerCase(), header.value || '']));\nconst parts = collectParts(email.payload);\nconst plain = parts.find((part) => /text\\/plain/i.test(part.mimeType))?.text || '';\nconst html = parts.find((part) => /text\\/html/i.test(part.mimeType))?.text || '';\nconst body = plain || html.replace(/<[^>]*>/g, ' ') || email.textPlain || email.textHtml || email.snippet || '';\nconst from = email.from || headers.from || '';\n\nreturn {\n  json: {\n    id: email.id || email.messageId,\n    messageId: email.id || email.messageId,\n    threadId: email.threadId,\n    from,\n    subject: email.subject || headers.subject || '',\n    snippet: email.snippet || '',\n    body,\n    email_ts: email.internalDate ? new Date(Number(email.internalDate)).toISOString() : new Date().toISOString()\n  }\n};"
+      },
+      "id": "4cc250c6-5e56-454d-bbe4-8827875c7a4d",
+      "name": "Normalize Mercantil Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.POLERAFLOW_MERCANTIL_PAYMENT_URL || 'https://admin-dhasboard.vercel.app/api/webhooks/gmail/mercantil-payment' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-poleraflow-webhook-secret",
+              "value": "={{ $env.POLERAFLOW_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "7dc3b572-7c3e-4aef-a988-990be0ebc2f0",
+      "name": "Verify Payment in PoleraFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.matched === true && !!$json.phone && !!$json.replyText }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "f70892c4-8401-4bf4-b5bf-6e8499fb19f1",
+      "name": "Payment Matched?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const result = $json;\nconst rawPhone = String(result.phone || '').replace(/\\D/g, '');\nconst toPhone = rawPhone ? (rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`) : '';\nconst fromPhone = String($env.YCLOUD_WHATSAPP_FROM || '+59178096231').trim();\n\nif (!toPhone || !fromPhone || !result.replyText) {\n  return { json: { shouldSend: false, reason: 'missing phone or text', result } };\n}\n\nreturn {\n  json: {\n    shouldSend: true,\n    result,\n    ycloudRequest: {\n      from: fromPhone,\n      to: toPhone,\n      type: 'text',\n      text: {\n        body: result.replyText\n      }\n    }\n  }\n};"
+      },
+      "id": "cf7bc68a-ab89-4456-b5d4-3a291f040981",
+      "name": "Build YCloud Payment Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.YCLOUD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.ycloudRequest }}",
+        "options": {}
+      },
+      "id": "ef855e5a-af03-4401-8695-1b8fd0ee5d98",
+      "name": "Send Payment Confirmed WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { ok: true, skipped: true, reason: $json.reason || 'payment not matched', result: $json } };"
+      },
+      "id": "f1169d8e-cd76-4e11-8fe2-6bd58452be56",
+      "name": "Keep Manual Review Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Gmail Mercantil Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Mercantil Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Mercantil Email": {
+      "main": [
+        [
+          {
+            "node": "Verify Payment in PoleraFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Payment in PoleraFlow": {
+      "main": [
+        [
+          {
+            "node": "Payment Matched?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment Matched?": {
+      "main": [
+        [
+          {
+            "node": "Build YCloud Payment Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Manual Review Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build YCloud Payment Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Send Payment Confirmed WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "c3fbc57b-3ee9-4d67-99df-6c090db0e620",
+  "triggerCount": 0,
+  "tags": []
+}

@@ -152,7 +152,7 @@ export function ProductsSection({
     const cleanWebCategory = normalizeWebCategory(webCategory);
 
     if (!cleanWebCategory) {
-      setFormError("Escoge una categorÃ­a web o escribe una nueva.");
+      setFormError("Escoge una categoría web o escribe una nueva.");
       return;
     }
 

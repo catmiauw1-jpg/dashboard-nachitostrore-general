@@ -22,6 +22,10 @@ interface OrderNotesPayload {
   stockDeducted?: boolean;
   stockDeductedAt?: string;
   stockRestoredAt?: string;
+  priority?: Order["priority"];
+  promisedDeliveryDate?: string;
+  deliveryArea?: Order["deliveryArea"];
+  deliveryDepartment?: string;
 }
 
 interface OrderRow {
@@ -78,7 +82,11 @@ function serializeNotes(order: Order) {
     referenceImages: order.referenceImages ?? [],
     stockDeducted: order.stockDeducted,
     stockDeductedAt: order.stockDeductedAt,
-    stockRestoredAt: undefined
+    stockRestoredAt: undefined,
+    priority: order.priority,
+    promisedDeliveryDate: order.promisedDeliveryDate,
+    deliveryArea: order.deliveryArea,
+    deliveryDepartment: order.deliveryDepartment
   });
 }
 
@@ -92,7 +100,11 @@ function serializeNotesPayload(notes: OrderNotesPayload) {
     referenceImages: notes.referenceImages ?? [],
     stockDeducted: notes.stockDeducted,
     stockDeductedAt: notes.stockDeductedAt,
-    stockRestoredAt: notes.stockRestoredAt
+    stockRestoredAt: notes.stockRestoredAt,
+    priority: notes.priority,
+    promisedDeliveryDate: notes.promisedDeliveryDate,
+    deliveryArea: notes.deliveryArea,
+    deliveryDepartment: notes.deliveryDepartment
   });
 }
 
@@ -217,6 +229,8 @@ function rowToOrder(row: OrderRow): Order {
     channel: row.sales_channel,
     prendas,
     delivery: row.delivery_method ?? undefined,
+    deliveryArea: notes.deliveryArea,
+    deliveryDepartment: notes.deliveryDepartment,
     notes: notes.notes,
     source: notes.source,
     botStatus: notes.botStatus,
@@ -233,6 +247,8 @@ function rowToOrder(row: OrderRow): Order {
     paymentCheckoutUrl: row.payment_checkout_url ?? undefined,
     paymentProofUrls: row.payment_proof_urls ?? undefined,
     requiresManualReview: Boolean(row.requires_manual_review),
+    priority: notes.priority,
+    promisedDeliveryDate: notes.promisedDeliveryDate,
     items
   };
 }
@@ -408,10 +424,27 @@ export async function updateOrder(orderId: string, updates: Partial<Order>): Pro
     botStatus: updates.botStatus ?? currentNotes.botStatus,
     designDetails: updates.designDetails ?? currentNotes.designDetails,
     quoteOption: updates.quoteOption ?? currentNotes.quoteOption,
-    referenceImages: updates.referenceImages ?? currentNotes.referenceImages ?? []
+    referenceImages: updates.referenceImages ?? currentNotes.referenceImages ?? [],
+    priority: updates.priority ?? currentNotes.priority,
+    promisedDeliveryDate: updates.promisedDeliveryDate ?? currentNotes.promisedDeliveryDate,
+    deliveryArea: updates.deliveryArea ?? currentNotes.deliveryArea,
+    deliveryDepartment: updates.deliveryDepartment ?? currentNotes.deliveryDepartment
   };
 
-  if (updates.notes !== undefined) updatePayload.notes = serializeNotesPayload(nextNotes);
+  if (
+    updates.notes !== undefined ||
+    updates.source !== undefined ||
+    updates.botStatus !== undefined ||
+    updates.designDetails !== undefined ||
+    updates.quoteOption !== undefined ||
+    updates.referenceImages !== undefined ||
+    updates.priority !== undefined ||
+    updates.promisedDeliveryDate !== undefined ||
+    updates.deliveryArea !== undefined ||
+    updates.deliveryDepartment !== undefined
+  ) {
+    updatePayload.notes = serializeNotesPayload(nextNotes);
+  }
 
   if (shouldDeductStock(updates.status) && !currentNotes.stockDeducted) {
     await deductOrderStock(currentOrder);

@@ -45,6 +45,8 @@ services:
       POLERAFLOW_WEBHOOK_SECRET: ${POLERAFLOW_WEBHOOK_SECRET}
       POLERAFLOW_WEBHOOK_URL: ${POLERAFLOW_WEBHOOK_URL:-https://admin-dhasboard.vercel.app/api/webhooks/n8n/whatsapp}
       WAFLOW_API_KEY: ${WAFLOW_API_KEY}
+      YCLOUD_API_KEY: ${YCLOUD_API_KEY}
+      YCLOUD_WHATSAPP_FROM: ${YCLOUD_WHATSAPP_FROM}
     volumes:
       - n8n_docker_data:/home/node/.n8n
 

@@ -152,60 +152,60 @@ export const stockData: StockItem[] = [
   {
     id: "base-polera-dtf::Blanco arena::M",
     productId: "base-polera-dtf",
-    productName: "Polera base DTF",
+    productName: "Polera para DTF",
     size: "M",
     color: "Blanco arena",
-    item: "Polera base DTF Blanco arena M",
+    item: "Polera para DTF Blanco arena M",
     available: 2,
     min: 1
   },
   {
     id: "base-polera-dtf::Blanco arena::L",
     productId: "base-polera-dtf",
-    productName: "Polera base DTF",
+    productName: "Polera para DTF",
     size: "L",
     color: "Blanco arena",
-    item: "Polera base DTF Blanco arena L",
+    item: "Polera para DTF Blanco arena L",
     available: 5,
     min: 1
   },
   {
     id: "base-polera-dtf::Blanco arena::XL",
     productId: "base-polera-dtf",
-    productName: "Polera base DTF",
+    productName: "Polera para DTF",
     size: "XL",
     color: "Blanco arena",
-    item: "Polera base DTF Blanco arena XL",
+    item: "Polera para DTF Blanco arena XL",
     available: 3,
     min: 1
   },
   {
     id: "base-polera-dtf::Negro::M",
     productId: "base-polera-dtf",
-    productName: "Polera base DTF",
+    productName: "Polera para DTF",
     size: "M",
     color: "Negro",
-    item: "Polera base DTF Negro M",
+    item: "Polera para DTF Negro M",
     available: 3,
     min: 1
   },
   {
     id: "base-polera-dtf::Negro::L",
     productId: "base-polera-dtf",
-    productName: "Polera base DTF",
+    productName: "Polera para DTF",
     size: "L",
     color: "Negro",
-    item: "Polera base DTF Negro L",
+    item: "Polera para DTF Negro L",
     available: 3,
     min: 1
   },
   {
     id: "base-polera-dtf::Negro::XL",
     productId: "base-polera-dtf",
-    productName: "Polera base DTF",
+    productName: "Polera para DTF",
     size: "XL",
     color: "Negro",
-    item: "Polera base DTF Negro XL",
+    item: "Polera para DTF Negro XL",
     available: 2,
     min: 1
   }

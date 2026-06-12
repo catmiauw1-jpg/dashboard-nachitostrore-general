@@ -180,7 +180,7 @@ async function orderFromFormData(formData: FormData): Promise<Order> {
   const items = safeItems(parseItems(valueOf(formData, "items")));
   const designDetails = cleanText(firstValueOf(formData, ["designDetails", "customDetails", "details", "message", "notes"]), 1000);
   const notes = cleanText(firstValueOf(formData, ["notes", "designDetails", "customDetails", "details", "message"]), 1000);
-  const product = cleanText(valueOf(formData, "product"), 120) || (type === catalogType ? "Pedido catalogo" : "Polera personalizada");
+  const product = cleanText(valueOf(formData, "product"), 120) || (type === catalogType ? "Pedido catálogo" : "Polera personalizada");
   const size = cleanText(valueOf(formData, "size"), 20) || undefined;
   const color = cleanText(valueOf(formData, "color"), 60) || undefined;
 
@@ -238,7 +238,7 @@ function orderFromJson(payload: Order & Record<string, unknown>): Order {
     customer: cleanText(payload.customer, 80) || "Cliente web",
     customerPhone: normalizePhone(String(payload.customerPhone ?? payload.phone ?? "")) || undefined,
     type,
-    product: cleanText(payload.product, 120) || (type === catalogType ? "Pedido catalogo" : "Polera personalizada"),
+    product: cleanText(payload.product, 120) || (type === catalogType ? "Pedido catálogo" : "Polera personalizada"),
     size: cleanText(payload.size, 20) || undefined,
     color: cleanText(payload.color, 60) || undefined,
     total: safeMoney(Number(payload.total)),

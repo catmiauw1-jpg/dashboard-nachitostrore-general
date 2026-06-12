@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MobileNav } from "@/components/MobileNav";
 import { OrderFormModal } from "@/components/OrderFormModal";
+import { ConfigurationSection } from "@/components/sections/ConfigurationSection";
 import { CustomersSection } from "@/components/sections/CustomersSection";
 import { ExpensesSection } from "@/components/sections/ExpensesSection";
 import { HomeSection } from "@/components/sections/HomeSection";
@@ -11,12 +12,12 @@ import { OrdersSection } from "@/components/sections/OrdersSection";
 import { ProductsSection } from "@/components/sections/ProductsSection";
 import { SectionWorkspace } from "@/components/sections/SectionWorkspace";
 import { StockSection } from "@/components/sections/StockSection";
+import { WhatsAppSalesSection } from "@/components/sections/WhatsAppSalesSection";
 import { Sidebar } from "@/components/Sidebar";
 import { Toast } from "@/components/Toast";
 import { Topbar } from "@/components/Topbar";
 import { displayStockName } from "@/lib/format";
 import {
-  initialChats,
   navigationItems,
   products,
   stockData
@@ -195,7 +196,7 @@ function customersFromOrders(orders: Order[], persistedCustomers: Customer[] = [
 export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps) {
   const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
   const [isDark, setIsDark] = useState(true);
-  const [chats, setChats] = useState<Conversation[]>(initialChats);
+  const [chats, setChats] = useState<Conversation[]>([]);
   const [orderList, setOrderList] = useState<Order[]>([]);
   const [customerList, setCustomerList] = useState<Customer[]>([]);
   const [expenseList, setExpenseList] = useState<Expense[]>([]);
@@ -230,12 +231,13 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
   const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
     try {
-      const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse] = await Promise.all([
+      const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse, conversationsResponse] = await Promise.all([
         apiFetch("/api/products", { cache: "no-store" }),
         apiFetch("/api/stock", { cache: "no-store" }),
         apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
         apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }),
-        apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" })
+        apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" }),
+        apiFetch(`/api/conversations?ts=${Date.now()}`, { cache: "no-store" })
       ]);
 
       if (productsResponse.ok) {
@@ -272,6 +274,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       if (expensesResponse.ok) {
         setExpenseList((await expensesResponse.json()) as Expense[]);
       }
+
+      if (conversationsResponse.ok) {
+        setChats((await conversationsResponse.json()) as Conversation[]);
+      }
     } catch {
       if (options?.showError) {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -286,12 +292,13 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   useEffect(() => {
     async function loadProducts() {
       try {
-        const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse] = await Promise.all([
+        const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse, conversationsResponse] = await Promise.all([
           apiFetch("/api/products", { cache: "no-store" }),
           apiFetch("/api/stock", { cache: "no-store" }),
           apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
           apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }),
-          apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" })
+          apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" }),
+          apiFetch(`/api/conversations?ts=${Date.now()}`, { cache: "no-store" })
         ]);
 
         if (productsResponse.ok) {
@@ -318,6 +325,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
         if (expensesResponse.ok) {
           setExpenseList((await expensesResponse.json()) as Expense[]);
+        }
+
+        if (conversationsResponse.ok) {
+          setChats((await conversationsResponse.json()) as Conversation[]);
         }
       } catch {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -349,25 +360,68 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   }, [refreshBusinessData]);
 
   const toggleBot = (index: number) => {
+    const chat = chats[index];
+    if (!chat) return;
+
+    const nextBotState = !chat.bot;
+
     setChats((currentChats) =>
-      currentChats.map((chat, chatIndex) => {
-        if (chatIndex !== index) return chat;
+      currentChats.map((currentChat, chatIndex) =>
+        chatIndex === index
+          ? {
+              ...currentChat,
+              bot: nextBotState,
+              alert: nextBotState ? currentChat.alert : true,
+              status: nextBotState ? "Bot activo" : "Atencion manual"
+            }
+          : currentChat
+      )
+    );
 
-        const nextBotState = !chat.bot;
+    void (async () => {
+      try {
+        const response = await apiFetch("/api/conversations", {
+          method: "PATCH",
+          headers: jsonAuthHeaders,
+          body: JSON.stringify({ id: chat.id, phone: chat.phone, bot: nextBotState })
+        });
 
+        if (!response.ok) throw new Error("No se pudo actualizar el chat.");
+
+        setChats((await response.json()) as Conversation[]);
         showToast(
           nextBotState
             ? "Bot activado para este chat."
-            : "Bot apagado para este chat. Ahora requiere atención manual."
+            : "Bot apagado para este chat. Ahora requiere atencion manual."
         );
+      } catch {
+        setChats((currentChats) =>
+          currentChats.map((currentChat, chatIndex) =>
+            chatIndex === index ? { ...currentChat, bot: chat.bot, alert: chat.alert, status: chat.status } : currentChat
+          )
+        );
+        showToast("No se pudo actualizar el bot de este chat.");
+      }
+    })();
+  };
 
-        return {
-          ...chat,
-          bot: nextBotState,
-          status: nextBotState ? "Bot activo" : "Atención manual"
-        };
-      })
-    );
+  const handleSendManualMessage = async (chat: Conversation, message: string) => {
+    const cleanMessage = message.trim();
+    if (!cleanMessage) return;
+
+    const response = await apiFetch("/api/conversations", {
+      method: "POST",
+      headers: jsonAuthHeaders,
+      body: JSON.stringify({ id: chat.id, phone: chat.phone, message: cleanMessage })
+    });
+
+    if (!response.ok) {
+      showToast("No se pudo guardar el mensaje manual.");
+      throw new Error("No se pudo guardar el mensaje manual.");
+    }
+
+    setChats((await response.json()) as Conversation[]);
+    showToast("Mensaje manual guardado en el chat.");
   };
 
   const getNextOrderNumber = () => {
@@ -535,7 +589,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       );
       showToast(`Stock actualizado: ${displayStockName(item.item)}.`);
     } catch {
-      showToast("El stock quedÃ³ local, pero no se pudo guardar en la API.");
+      showToast("El stock quedó local, pero no se pudo guardar en la API.");
     }
   };
 
@@ -560,7 +614,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
         })
       );
     } catch {
-      showToast("El ajuste quedÃ³ local, pero no se pudo guardar en la API.");
+      showToast("El ajuste quedó local, pero no se pudo guardar en la API.");
     }
   };
 
@@ -596,7 +650,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       setExpenseList((await response.json()) as Expense[]);
       showToast(`Gasto "${expense.title}" registrado.`);
     } catch {
-      showToast("El gasto quedÃ³ local, pero no se pudo guardar en la API.");
+      showToast("El gasto quedó local, pero no se pudo guardar en la API.");
     }
   };
 
@@ -616,7 +670,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       setExpenseList((await response.json()) as Expense[]);
       showToast(expense ? `Gasto "${expense.title}" eliminado.` : "Gasto eliminado.");
     } catch {
-      showToast("El gasto se quitÃ³ localmente, pero no se pudo eliminar en la API.");
+      showToast("El gasto se quitó localmente, pero no se pudo eliminar en la API.");
     }
   };
 
@@ -725,6 +779,18 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       return <CustomersSection customers={customerList} orders={orderList} onUpdateCustomerNote={handleUpdateCustomerNote} />;
     }
 
+    if (activeSection === "whatsapp") {
+      return (
+        <WhatsAppSalesSection
+          chats={chats}
+          orders={orderList}
+          onSendManualMessage={handleSendManualMessage}
+          onToggleBot={toggleBot}
+          onUpdateOrder={handleUpdateOrder}
+        />
+      );
+    }
+
     if (activeSection === "gastos") {
       return (
         <ExpensesSection
@@ -734,6 +800,10 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
           onDeleteExpense={handleDeleteExpense}
         />
       );
+    }
+
+    if (activeSection === "configuracion") {
+      return <ConfigurationSection adminEmail={adminEmail} onNotify={showToast} />;
     }
 
     return (

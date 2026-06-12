@@ -75,7 +75,7 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
   historial: {
     kicker: "Archivo",
     title: "Historial",
-    description: "Revisa pedidos entregados y cancelados fuera de la cola de preparaciÃ³n.",
+    description: "Revisa pedidos entregados y cancelados fuera de la cola de preparación.",
     primaryAction: "Ver pedidos",
     summary: [
       { label: "Entregados", value: "0", detail: "Pedidos completados" },
@@ -84,7 +84,7 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
     ],
     mainPanel: {
       title: "Pedidos cerrados",
-      description: "Historial separado para no mezclar producciÃ³n activa con pedidos finalizados.",
+      description: "Historial separado para no mezclar producción activa con pedidos finalizados.",
       badge: "Historial",
       badgeTone: "info",
       items: [
@@ -108,8 +108,8 @@ export const sectionDefinitions: Record<Exclude<SectionKey, "inicio">, SectionDe
         }
       ]
     },
-    nextStep: "Usar esta secciÃ³n para auditorÃ­a y revisiÃ³n de ventas cerradas.",
-    futureConnection: "Luego se podrÃ¡ exportar a Excel o conectar reportes mensuales."
+    nextStep: "Usar esta sección para auditoría y revisión de ventas cerradas.",
+    futureConnection: "Luego se podrá exportar a Excel o conectar reportes mensuales."
   },
   productos: {
     kicker: "Catálogo",

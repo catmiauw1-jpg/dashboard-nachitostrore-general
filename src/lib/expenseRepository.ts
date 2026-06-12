@@ -45,7 +45,7 @@ function rowToExpense(row: ExpenseRow): Expense {
     category: row.category,
     amount: Number(row.amount ?? 0),
     expenseDate: row.expense_date,
-    notes: notes.notes ?? row.notes ?? undefined,
+    notes: notes.notes?.trim() || undefined,
     createdAt: row.created_at ?? undefined
   };
 }

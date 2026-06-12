@@ -1,0 +1,317 @@
+{
+  "id": "poleraflow-ycloud-bot-starter",
+  "name": "PoleraFlow YCloud Conversation Bot",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "poleraflow-ycloud",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f581f425-77fb-4893-8bff-ff8f787dc130",
+      "name": "ycloud-webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        0
+      ],
+      "webhookId": "68f0ba6d-9a47-4d94-8779-c9c719b43834"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json;\nconst body = input.body || input;\nconst event = body.event || body.type || body.eventType || '';\nconst inbound = body.whatsappInboundMessage || body.inboundMessage || body.message || body.data?.message || body.data || body;\nconst contact = body.contact || body.customer || inbound.contact || inbound.customer || {};\nconst profile = inbound.profile || contact.profile || {};\nconst textValue = inbound.text?.body || inbound.text || inbound.body || inbound.content || body.text?.body || body.text || '';\nconst fromValue = inbound.from || body.from || contact.phone || contact.phoneNumber || contact.waId || contact.wa_id || inbound.sender?.phone || '';\nconst nameValue = profile.name || contact.name || contact.fullName || inbound.sender?.name || 'Cliente WhatsApp';\nconst messageType = inbound.type || body.messageType || body.message_type || 'text';\nconst attachments = [];\nconst captions = [];\nfor (const key of ['image', 'document', 'audio', 'video', 'sticker']) {\n  const media = inbound[key] || body[key];\n  if (!media) continue;\n  if (media.caption) captions.push(media.caption);\n  if (media.url || media.link || media.id) {\n    attachments.push({\n      type: key,\n      url: media.url || media.link,\n      link: media.link,\n      id: media.id,\n      mime_type: media.mime_type || media.mimeType,\n      file_name: media.file_name || media.filename || media.name\n    });\n  }\n}\nif (Array.isArray(inbound.attachments)) attachments.push(...inbound.attachments);\nconst proofText = [String(textValue || ''), ...captions].filter(Boolean).join('\\n');\n\nreturn [{\n  json: {\n    provider: 'ycloud',\n    event,\n    phone: String(fromValue).replace(/\\D/g, ''),\n    from: String(fromValue).replace(/\\D/g, ''),\n    customerName: nameValue,\n    name: nameValue,\n    text: String(textValue || ''),\n    messageText: String(textValue || ''),\n    proofText,\n    message: {\n      id: inbound.id || body.id || body.messageId,\n      type: messageType,\n      body: String(textValue || ''),\n      text: String(textValue || ''),\n      from: String(fromValue).replace(/\\D/g, ''),\n      fromMe: Boolean(inbound.fromMe || inbound.from_me || body.fromMe),\n      attachments\n    },\n    contact: {\n      name: nameValue,\n      phone: String(fromValue).replace(/\\D/g, ''),\n      phone_number: String(fromValue).replace(/\\D/g, '')\n    },\n    ycloud: body\n  }\n}];"
+      },
+      "id": "c8b5be88-328e-494e-85bb-fb50d3bfb6c3",
+      "name": "Normalize YCloud Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.POLERAFLOW_BOT_URL || 'https://admin-dhasboard.vercel.app/api/webhooks/n8n/waflow-bot' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-poleraflow-webhook-secret",
+              "value": "={{ $env.POLERAFLOW_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "dd5321e8-b579-4b1b-b524-a567cb251f91",
+      "name": "Run Bot in PoleraFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const bot = $input.first().json;\nconst normalized = $('Normalize YCloud Event').first().json;\nconst rawPhone = String(bot.replyTargetPhone || bot.phone || '').replace(/\\D/g, '');\nconst inboundTo = String(normalized.ycloud?.whatsappInboundMessage?.to || normalized.ycloud?.to || '').trim();\nconst fromPhone = String($env.YCLOUD_WHATSAPP_FROM || inboundTo || '+59178096231').trim();\nconst toPhone = rawPhone ? (rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`) : '';\nconst textMessages = Array.isArray(bot.replyMessages)\n  ? bot.replyMessages.map((message) => String(message || '').trim()).filter(Boolean)\n  : String(bot.replyText || '').split(/\\n{2,}/).map((message) => message.trim()).filter(Boolean);\nconst qrUrl = bot.payment_flow?.qrUrl || bot.paymentFlow?.qrUrl || bot.paymentQrUrl || '';\n\nif (!fromPhone || !toPhone || (!textMessages.length && !qrUrl)) {\n  return [{ json: { bot, shouldSend: false, reason: !fromPhone ? 'missing from' : !toPhone ? 'missing phone' : 'empty reply' } }];\n}\n\nconst outbound = textMessages.map((message) => ({\n  type: 'text',\n  ycloudRequest: {\n    from: fromPhone,\n    to: toPhone,\n    type: 'text',\n    text: { body: message }\n  }\n}));\n\nif (qrUrl) {\n  outbound.push({\n    type: 'image',\n    ycloudRequest: {\n      from: fromPhone,\n      to: toPhone,\n      type: 'image',\n      image: {\n        link: qrUrl,\n        caption: 'QR de pago Nachito Store'\n      }\n    }\n  });\n}\n\nreturn outbound.map((message, index) => ({\n  json: {\n    bot,\n    shouldSend: true,\n    index,\n    outboundType: message.type,\n    ycloudRequest: message.ycloudRequest\n  }\n}));"
+      },
+      "id": "f0504961-615b-4ce8-a7da-6ca16299b729",
+      "name": "Build YCloud Replies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.shouldSend === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "a333ed47-0cbb-4dbd-a050-b72c82f26a17",
+      "name": "Should Send Reply",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.YCLOUD_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.ycloudRequest }}",
+        "options": {}
+      },
+      "id": "e8b5ee2d-4b42-4628-b23a-d2712574fc30",
+      "name": "Send YCloud Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, provider: 'ycloud', sent: true, item: $json } }}",
+        "options": {}
+      },
+      "id": "ff2f3f5a-a660-4362-a697-b6d431517f3b",
+      "name": "Respond After Send",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, provider: 'ycloud', sent: false, reason: $json.reason || 'no reply' } }}",
+        "options": {}
+      },
+      "id": "d3688ff2-b39a-4b95-a056-a4ad0407ac1f",
+      "name": "Respond Without Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        820,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.POLERAFLOW_PROOF_AI_URL || 'https://admin-dhasboard.vercel.app/api/webhooks/n8n/payment-proof-ai' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-poleraflow-webhook-secret",
+              "value": "={{ $env.POLERAFLOW_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a3d5e36f-41ed-4b43-aea8-d30ed524eb1a",
+      "name": "Extract Payment Proof with AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const normalized = $('Normalize YCloud Event').first().json;\nconst ai = $input.first().json || {};\nconst proofEvidence = ai.proofEvidence || {};\nconst proofText = ai.proofText || normalized.proofText || '';\nreturn [{\n  json: {\n    ...normalized,\n    proofText,\n    ocrText: proofText,\n    proofEvidence,\n    proofAi: {\n      available: Boolean(ai.aiAvailable),\n      reason: ai.aiReason || ai.reason || null\n    }\n  }\n}];"
+      },
+      "id": "e4d7b315-45db-4473-bcc5-5ea3f6d3c042",
+      "name": "Attach AI Proof Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "ycloud-webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize YCloud Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize YCloud Event": {
+      "main": [
+        [
+          {
+            "node": "Extract Payment Proof with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Bot in PoleraFlow": {
+      "main": [
+        [
+          {
+            "node": "Build YCloud Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build YCloud Replies": {
+      "main": [
+        [
+          {
+            "node": "Should Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Send YCloud Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Without Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send YCloud Reply": {
+      "main": [
+        [
+          {
+            "node": "Respond After Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Payment Proof with AI": {
+      "main": [
+        [
+          {
+            "node": "Attach AI Proof Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach AI Proof Evidence": {
+      "main": [
+        [
+          {
+            "node": "Run Bot in PoleraFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "57b1a1b9-d267-493d-abd5-b44267e1887c",
+  "triggerCount": 1,
+  "tags": []
+}

@@ -37,14 +37,6 @@ function expenseDateLabel(value: string) {
   }).format(date);
 }
 
-function sameMonth(value: string) {
-  const date = new Date(`${value}T12:00:00`);
-  const now = new Date();
-  return !Number.isNaN(date.getTime()) &&
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth();
-}
-
 function expenseId() {
   return `exp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -76,27 +68,23 @@ export function ExpensesSection({ expenses, orders, onAddExpense, onDeleteExpens
     });
   }, [expenses, filter, query]);
 
-  const monthExpenses = expenses.filter((expense) => sameMonth(expense.expenseDate));
-  const businessMonth = monthExpenses
+  const businessExpensesTotal = expenses
     .filter((expense) => expense.scope === "Tienda")
     .reduce((sum, expense) => sum + expense.amount, 0);
-  const personalMonth = monthExpenses
+  const personalExpensesTotal = expenses
     .filter((expense) => expense.scope === "Personal")
     .reduce((sum, expense) => sum + expense.amount, 0);
-  const monthSales = orders
-    .filter((order) => {
-      if (order.status === "Cancelado") return false;
-      const createdAt = order.createdAt ? order.createdAt.slice(0, 10) : "";
-      return createdAt ? sameMonth(createdAt) : false;
-    })
+  const totalSales = orders
+    .filter((order) => order.status !== "Cancelado")
     .reduce((sum, order) => sum + order.total, 0);
-  const estimatedMargin = Math.round(monthSales * 0.35);
-  const estimatedProfit = Math.max(0, estimatedMargin - businessMonth);
+  const estimatedMargin = Math.round(totalSales * 0.35);
+  const estimatedProfit = Math.max(0, estimatedMargin - businessExpensesTotal);
+  const afterPersonalExpenses = Math.max(0, estimatedProfit - personalExpensesTotal);
 
   const categoryTotals = categories
     .map((item) => ({
       category: item,
-      total: monthExpenses
+      total: expenses
         .filter((expense) => expense.scope === "Tienda" && expense.category === item)
         .reduce((sum, expense) => sum + expense.amount, 0)
     }))
@@ -142,30 +130,35 @@ export function ExpensesSection({ expenses, orders, onAddExpense, onDeleteExpens
         <div>
           <span className="section-kicker">Finanzas</span>
           <h2>Gastos</h2>
-          <p>Registra gastos de la tienda y gastos personales por separado para no mezclar plata del negocio.</p>
+          <p>Controla ventas acumuladas, gastos de tienda, gastos personales y ganancia real estimada.</p>
         </div>
       </header>
 
       <div className="section-summary-grid expenses-summary-grid">
         <article className="section-summary-card">
-          <span>Ventas del mes</span>
-          <strong>{formatCurrency(monthSales)}</strong>
-          <small>Pedidos no cancelados</small>
+          <span>Ventas totales</span>
+          <strong>{formatCurrency(totalSales)}</strong>
+          <small>Todo lo vendido no cancelado</small>
         </article>
         <article className="section-summary-card">
           <span>Gastos tienda</span>
-          <strong>{formatCurrency(businessMonth)}</strong>
+          <strong>{formatCurrency(businessExpensesTotal)}</strong>
           <small>Afecta la ganancia</small>
         </article>
         <article className="section-summary-card">
           <span>Gastos personales</span>
-          <strong>{formatCurrency(personalMonth)}</strong>
+          <strong>{formatCurrency(personalExpensesTotal)}</strong>
           <small>No se mezcla con tienda</small>
         </article>
         <article className="section-summary-card">
           <span>Ganancia estimada</span>
           <strong>{formatCurrency(estimatedProfit)}</strong>
-          <small>Margen estimado menos tienda</small>
+          <small>Margen estimado menos gastos tienda</small>
+        </article>
+        <article className="section-summary-card">
+          <span>Libre despues de personales</span>
+          <strong>{formatCurrency(afterPersonalExpenses)}</strong>
+          <small>Ganancia estimada menos personales</small>
         </article>
       </div>
 
@@ -249,7 +242,7 @@ export function ExpensesSection({ expenses, orders, onAddExpense, onDeleteExpens
           <div className="panel-header">
             <div>
               <h3>Resumen de tienda</h3>
-              <p>Vista rápida de dónde se está yendo la plata del negocio este mes.</p>
+              <p>Vista rápida de dónde se fue la plata de la tienda en todo el historial.</p>
             </div>
           </div>
 
@@ -258,10 +251,10 @@ export function ExpensesSection({ expenses, orders, onAddExpense, onDeleteExpens
               <div className="expense-breakdown-row" key={item.category}>
                 <div>
                   <strong>{item.category}</strong>
-                  <span>{Math.round((item.total / Math.max(1, businessMonth)) * 100)}%</span>
+                  <span>{Math.round((item.total / Math.max(1, businessExpensesTotal)) * 100)}%</span>
                 </div>
                 <div className="expense-progress-track">
-                  <span style={{ width: `${Math.min(100, (item.total / Math.max(1, businessMonth)) * 100)}%` }} />
+                  <span style={{ width: `${Math.min(100, (item.total / Math.max(1, businessExpensesTotal)) * 100)}%` }} />
                 </div>
                 <small>{formatCurrency(item.total)}</small>
               </div>

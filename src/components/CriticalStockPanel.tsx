@@ -21,7 +21,7 @@ export function CriticalStockPanel({ stock, onOpenStock }: CriticalStockPanelPro
       <div className="panel-header">
         <div>
           <h3><IconPackage size={17} stroke={1.7} />Stock bajo</h3>
-          <p>Prendas que necesitan reposicion</p>
+          <p>Prendas que necesitan reposición</p>
         </div>
       </div>
 

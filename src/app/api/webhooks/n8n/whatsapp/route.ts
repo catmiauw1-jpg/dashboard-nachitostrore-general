@@ -104,7 +104,7 @@ function safeItems(payload: N8nOrderPayload, type: OrderType): OrderLineItem[] {
 
   return [
     {
-      productName: cleanText(payload.product, 120) || (type === catalogType ? "Pedido catalogo" : "Polera personalizada"),
+      productName: cleanText(payload.product, 120) || (type === catalogType ? "Pedido catálogo" : "Polera personalizada"),
       color: cleanText(payload.color, 60) || undefined,
       size: cleanText(payload.size, 20) || undefined,
       quantity,
@@ -130,7 +130,7 @@ function orderFromN8n(payload: N8nOrderPayload): Order {
     type,
     product:
       cleanText(payload.product, 120) ||
-      (items.length > 1 ? (type === catalogType ? "Pedido catalogo" : "Polera personalizada") : firstItem.productName),
+      (items.length > 1 ? (type === catalogType ? "Pedido catálogo" : "Polera personalizada") : firstItem.productName),
     size: firstItem.size,
     color: firstItem.color,
     payment: normalizePayment(payload.payment),

@@ -76,7 +76,7 @@ export function OrderHistorySection({ orders }: OrderHistorySectionProps) {
   const selectedOrder =
     selectedOrderId && orders.find((order) => order.id === selectedOrderId)?.status === activeTab.slice(0, -1)
       ? orders.find((order) => order.id === selectedOrderId)
-      : visibleOrders[0];
+      : undefined;
   const selectedItems = selectedOrder ? orderItems(selectedOrder) : [];
   const closedTotal = closedOrders.reduce((sum, order) => sum + order.total, 0);
 

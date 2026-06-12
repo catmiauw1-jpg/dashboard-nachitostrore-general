@@ -38,11 +38,15 @@ export type OrderType = "Catálogo" | "Personalizada";
 
 export type SalesChannel = "WhatsApp" | "Instagram" | "Web" | "Manual";
 
-export type DeliveryMethod = "Recoger" | "Yango";
+export type DeliveryMethod = "Recoger" | "Yango" | "Flota";
+
+export type DeliveryArea = "Santa Cruz" | "Otro departamento";
 
 export type OrderSource = "Web catálogo" | "Web personaliza" | "WhatsApp bot" | "Manual";
 
 export type BotOrderStatus = "Bot registrado" | "Esperando comprobante" | "Atención manual";
+
+export type OrderPriority = "Normal" | "Alta" | "Urgente";
 
 export type ExpenseScope = "Tienda" | "Personal";
 
@@ -143,6 +147,8 @@ export interface Order {
   channel: SalesChannel;
   prendas: number;
   delivery?: DeliveryMethod;
+  deliveryArea?: DeliveryArea;
+  deliveryDepartment?: string;
   notes?: string;
   source?: OrderSource;
   botStatus?: BotOrderStatus;
@@ -159,6 +165,8 @@ export interface Order {
   paymentCheckoutUrl?: string;
   paymentProofUrls?: string[];
   requiresManualReview?: boolean;
+  priority?: OrderPriority;
+  promisedDeliveryDate?: string;
   items?: OrderLineItem[];
 }
 
@@ -174,11 +182,26 @@ export interface Expense {
 }
 
 export interface Conversation {
+  id?: string;
   name: string;
   phone: string;
   bot: boolean;
   alert: boolean;
   status: string;
+  stage?: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  paymentAmount?: number;
+  paymentChoice?: string;
+  messages?: ConversationMessage[];
+}
+
+export interface ConversationMessage {
+  id?: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  createdAt?: string;
+  source?: string;
 }
 
 export interface NavigationItem {
