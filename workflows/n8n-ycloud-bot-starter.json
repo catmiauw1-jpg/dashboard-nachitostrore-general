@@ -260,6 +260,62 @@
         -160,
         -260
       ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({\n  cliente: $json.customerName || $json.name || $json.replyTargetName || 'Cliente WhatsApp',\n  telefono: $json.replyTargetPhone || $json.phone || '',\n  mensajeCliente: $('Normalize YCloud Event').first().json.messageText || $('Normalize YCloud Event').first().json.text || '',\n  respuestaSegura: $json.replyText || '',\n  mensajesSeguros: $json.replyMessages || [],\n  etapa: $json.stage || $json.state?.stage || '',\n  necesitaHumano: $json.needsHuman === true,\n  tieneQr: Boolean($json.payment_flow?.qrUrl || $json.paymentFlow?.qrUrl || $json.paymentQrUrl),\n  montoPago: $json.payment_flow?.amount || $json.paymentFlow?.amount || $json.paymentAmount || null,\n  pedido: $json.order || $json.state?.order || null,\n  aiIntent: $('Attach AI Intent').first().json.aiIntent || null\n}) }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "Eres el asistente humano de ventas de Nachito Store en WhatsApp.\nReescribes la respuesta segura del sistema para que suene natural, breve y amable.\nDevuelve SOLO JSON valido, sin markdown fuera del JSON.\n\nInformacion del negocio:\n- Nachito Store vende poleras oversize 200 g, algodon premium, cuello reforzado 3 cm y estampado DTF.\n- Colores: blanco arena y negro. Tallas: M, L, XL.\n- Catalogo desde Bs 125 a Bs 180. Personalizadas desde Bs 155.\n- Produccion: 2 a 4 dias habiles.\n- Santa Cruz: Yango o recoger. Costo de envio adicional.\n- Otros departamentos: flota jueves y viernes. Costo adicional.\n- Web: https://nachitostore.vercel.app\n\nReglas duras:\n- No cambies montos, tallas, productos, estados ni links que ya vienen en respuestaSegura/pedido.\n- No confirmes pago, no digas que pag?, no digas que entra a produccion salvo que respuestaSegura ya lo diga.\n- No inventes stock ni fechas exactas.\n- Si el cliente no entiende o dice que no tiene pedido, explica con calma que puede haber quedado un pedido abierto y ofrece opciones.\n- Si esta esperando comprobante, no repitas como robot: explica que falta comprobante o que puede cancelar/cambiar si fue error.\n- Si pregunta algo del negocio, responde con la informacion del negocio y luego guia al siguiente paso.\n- Mant?n mensajes cortos, como WhatsApp real. Maximo 2 mensajes salvo que sea resumen de pedido.\n- Usa el nombre del cliente si est? disponible.\n- No uses textos largos ni tono de call center.\n\nFormato obligatorio:\n{\"safeToUse\":true,\"replyMessages\":[\"mensaje 1\",\"mensaje 2 opcional\"],\"reason\":\"\"}",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false,
+          "enableStreaming": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        320,
+        -260
+      ],
+      "id": "2b2065f6-8d71-44b2-925f-1e707cf4ae52",
+      "name": "AI Human Reply Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "google/gemma-4-31b-it:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        320,
+        -80
+      ],
+      "id": "1022ca31-7109-4c2a-a88f-cb31077ead8a",
+      "name": "OpenRouter Human Reply Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "fZBAqAMRSFTMx6Rc",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const bot = $('Run Bot in PoleraFlow').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nconst originalMessages = Array.isArray(bot.replyMessages)\n  ? bot.replyMessages.map((message) => String(message || '').trim()).filter(Boolean)\n  : String(bot.replyText || '').split(/\\n{2,}/).map((message) => message.trim()).filter(Boolean);\n\nlet parsed = null;\nconst jsonStart = raw.indexOf('{');\nconst jsonEnd = raw.lastIndexOf('}');\nconst jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (error) {\n  parsed = null;\n}\n\nfunction cleanMessage(value) {\n  return String(value || '')\n    .replace(/\\r/g, '')\n    .replace(/\\n{4,}/g, '\\n\\n')\n    .trim()\n    .slice(0, 900);\n}\n\nconst hasQr = Boolean(bot.payment_flow?.qrUrl || bot.paymentFlow?.qrUrl || bot.paymentQrUrl);\nconst proposed = Array.isArray(parsed?.replyMessages)\n  ? parsed.replyMessages.map(cleanMessage).filter(Boolean).slice(0, 3)\n  : [];\nconst originalText = originalMessages.join('\\n\\n');\nconst proposedText = proposed.join('\\n\\n');\n\nconst originalAmounts = [...originalText.matchAll(/\\b\\d+(?:[.,]\\d+)?\\s*Bs\\b/gi)].map((match) => match[0]);\nconst preservesAmounts = originalAmounts.every((amount) => proposedText.includes(amount));\nconst safe = parsed?.safeToUse !== false && proposed.length > 0 && proposedText.length <= 1800 && (!originalAmounts.length || preservesAmounts);\n\nif (!bot.replyText || !originalMessages.length || !safe) {\n  return [{ json: { ...bot, aiHumanReply: { used: false, reason: parsed?.reason || raw || 'fallback_original' } } }];\n}\n\nreturn [{\n  json: {\n    ...bot,\n    replyText: proposedText,\n    replyMessages: proposed,\n    aiHumanReply: {\n      used: true,\n      reason: parsed?.reason || 'humanized',\n      hasQr\n    }\n  }\n}];"
+      },
+      "id": "1eb86fb7-8f38-472c-a5c2-42360ee58cb6",
+      "name": "Attach AI Human Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -260
+      ]
     }
   ],
   "connections": {
@@ -289,7 +345,7 @@
       "main": [
         [
           {
-            "node": "Build YCloud Replies",
+            "node": "AI Human Reply Agent",
             "type": "main",
             "index": 0
           }
@@ -385,6 +441,39 @@
         [
           {
             "node": "AI Intent Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Human Reply Agent": {
+      "main": [
+        [
+          {
+            "node": "Attach AI Human Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach AI Human Reply": {
+      "main": [
+        [
+          {
+            "node": "Build YCloud Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Human Reply Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Human Reply Agent",
             "type": "ai_languageModel",
             "index": 0
           }
