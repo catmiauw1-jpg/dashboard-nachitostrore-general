@@ -3250,7 +3250,9 @@ body.dark .home-workspace .chat-item {
 }
 
 .compact-review-list {
-  max-height: 220px;
+  max-height: none;
+  flex: 0 0 auto;
+  overflow: visible;
   padding: 10px 12px 12px;
   scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) var(--surface);
   scrollbar-width: thin;
@@ -3258,6 +3260,7 @@ body.dark .home-workspace .chat-item {
 
 .compact-review-list .payment-order-card {
   border-radius: 8px;
+  min-height: 96px;
   padding: 10px;
   background: color-mix(in srgb, var(--surface-soft) 78%, var(--accent) 6%);
 }
