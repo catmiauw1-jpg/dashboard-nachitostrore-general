@@ -329,11 +329,128 @@ async function analyzeWithGemini(payload: PaymentProofAiPayload, mediaUrl: strin
   };
 }
 
+async function analyzeWithOpenAiCompatible(payload: PaymentProofAiPayload, mediaUrl: string) {
+  const baseUrl = cleanText(process.env.PROOF_AI_BASE_URL ?? process.env.PAYMENT_AI_BASE_URL, 500).replace(/\/$/, "");
+  const model = cleanText(process.env.PROOF_AI_MODEL ?? process.env.PAYMENT_AI_MODEL, 120);
+  if (!baseUrl || !model) return { ok: false, reason: "missing_openai_compatible_config" };
+
+  const mime = attachmentMime(payload);
+  if (mime.includes("pdf")) return { ok: false, reason: "openai_compatible_pdf_not_supported" };
+
+  const apiKey = process.env.PROOF_AI_API_KEY ?? process.env.PAYMENT_AI_API_KEY;
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: buildPrompt(payload) },
+            { type: "image_url", image_url: { url: mediaUrl } }
+          ]
+        }
+      ],
+      temperature: 0,
+      response_format: { type: "json_object" }
+    })
+  });
+
+  if (!response.ok) return { ok: false, reason: "openai_compatible_request_failed", status: response.status };
+
+  const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const outputText = cleanText(json.choices?.[0]?.message?.content, 10_000);
+  const parsed = parseJsonObject(outputText);
+  if (!parsed) return { ok: false, reason: "ai_json_parse_failed", rawText: outputText };
+
+  return {
+    ok: true,
+    evidence: {
+      amount: typeof parsed.amount === "number" ? parsed.amount : undefined,
+      payerName: cleanText(parsed.payerName, 160) || undefined,
+      reference: cleanText(parsed.reference, 80) || undefined,
+      notificationNumber: cleanText(parsed.notificationNumber, 80) || undefined,
+      bankName: cleanText(parsed.bankName, 120) || undefined,
+      paidAtText: cleanText(parsed.paidAtText, 120) || undefined,
+      rawText: cleanText(parsed.rawText ?? outputText, 6000) || outputText.slice(0, 6000),
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0))),
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings.map((warning) => cleanText(warning, 160)).filter(Boolean) : []
+    }
+  };
+}
+
+async function analyzeWithOllama(payload: PaymentProofAiPayload, mediaUrl: string) {
+  const model = cleanText(process.env.PROOF_AI_MODEL ?? process.env.PAYMENT_AI_MODEL, 120);
+  if (!model) return { ok: false, reason: "missing_ollama_model" };
+
+  const mime = normalizedMimeType(attachmentMime(payload));
+  if (mime.includes("pdf")) return { ok: false, reason: "ollama_pdf_not_supported" };
+
+  const inlineData = mediaUrl.startsWith("data:")
+    ? dataUrlToInlineData(mediaUrl, mime)
+    : (await remoteUrlToInlineData(mediaUrl, mime));
+
+  if (!inlineData) return { ok: false, reason: "invalid_data_url" };
+  if ("ok" in inlineData && !inlineData.ok) return inlineData;
+
+  const media = (
+    "inlineData" in inlineData
+      ? inlineData.inlineData
+      : inlineData
+  ) as { mimeType: string; data: string };
+  const baseUrl = (cleanText(process.env.PROOF_AI_BASE_URL ?? process.env.PAYMENT_AI_BASE_URL, 500) || "http://127.0.0.1:11434").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: buildPrompt(payload),
+          images: [media.data]
+        }
+      ],
+      stream: false,
+      format: "json",
+      options: { temperature: 0 }
+    })
+  });
+
+  if (!response.ok) return { ok: false, reason: "ollama_request_failed", status: response.status };
+
+  const json = (await response.json()) as { message?: { content?: string } };
+  const outputText = cleanText(json.message?.content, 10_000);
+  const parsed = parseJsonObject(outputText);
+  if (!parsed) return { ok: false, reason: "ai_json_parse_failed", rawText: outputText };
+
+  return {
+    ok: true,
+    evidence: {
+      amount: typeof parsed.amount === "number" ? parsed.amount : undefined,
+      payerName: cleanText(parsed.payerName, 160) || undefined,
+      reference: cleanText(parsed.reference, 80) || undefined,
+      notificationNumber: cleanText(parsed.notificationNumber, 80) || undefined,
+      bankName: cleanText(parsed.bankName, 120) || undefined,
+      paidAtText: cleanText(parsed.paidAtText, 120) || undefined,
+      rawText: cleanText(parsed.rawText ?? outputText, 6000) || outputText.slice(0, 6000),
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0))),
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings.map((warning) => cleanText(warning, 160)).filter(Boolean) : []
+    }
+  };
+}
+
 async function analyzeProofWithAi(payload: PaymentProofAiPayload, mediaUrl: string) {
   const provider = cleanText(process.env.PROOF_AI_PROVIDER, 40).toLowerCase();
 
   if (provider === "openai") return analyzeWithOpenAi(payload, mediaUrl);
   if (provider === "gemini") return analyzeWithGemini(payload, mediaUrl);
+  if (provider === "openai-compatible" || provider === "openai_compatible") return analyzeWithOpenAiCompatible(payload, mediaUrl);
+  if (provider === "ollama") return analyzeWithOllama(payload, mediaUrl);
 
   const gemini = await analyzeWithGemini(payload, mediaUrl);
   if (gemini.ok) return gemini;
@@ -341,11 +458,15 @@ async function analyzeProofWithAi(payload: PaymentProofAiPayload, mediaUrl: stri
   const openai = await analyzeWithOpenAi(payload, mediaUrl);
   if (openai.ok) return openai;
 
+  const compatible = await analyzeWithOpenAiCompatible(payload, mediaUrl);
+  if (compatible.ok) return compatible;
+
   return {
     ok: false,
-    reason: `gemini:${gemini.reason ?? "unavailable"};openai:${openai.reason ?? "unavailable"}`,
+    reason: `gemini:${gemini.reason ?? "unavailable"};openai:${openai.reason ?? "unavailable"};compatible:${compatible.reason ?? "unavailable"}`,
     gemini,
-    openai
+    openai,
+    compatible
   };
 }
 

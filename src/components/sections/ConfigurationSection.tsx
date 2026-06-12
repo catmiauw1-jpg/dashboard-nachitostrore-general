@@ -93,8 +93,8 @@ export function ConfigurationSection({ adminEmail, onNotify }: ConfigurationSect
         </article>
         <article className="section-summary-card">
           <span>IA</span>
-          <strong>Gemini</strong>
-          <small>Lectura de comprobantes</small>
+          <strong>Agente pagos</strong>
+          <small>Comprobante + Gmail</small>
         </article>
       </div>
 
@@ -145,7 +145,7 @@ export function ConfigurationSection({ adminEmail, onNotify }: ConfigurationSect
           <div className="config-rule-list">
             <span>Responde solo si el pedido viene desde la web.</span>
             <span>No confirma pago solo por screenshot.</span>
-            <span>Si Gemini falla, pasa a revision manual.</span>
+            <span>Si la IA no esta segura, pasa a revision manual.</span>
           </div>
         </article>
 
@@ -161,7 +161,7 @@ export function ConfigurationSection({ adminEmail, onNotify }: ConfigurationSect
               ["Supabase", "Base de datos conectada", IconDatabase],
               ["Gmail Mercantil", "Verifica correos de pago", IconMailCheck],
               ["YCloud", `WhatsApp ${settingValue(settings, "whatsapp")}`, IconBrandWhatsapp],
-              ["Gemini", "Lee comprobantes con IA", IconShieldLock]
+              ["Agente AI", "Compara comprobante con Gmail", IconShieldLock]
             ].map(([title, detail, Icon]) => (
               <div className="integration-row" key={title as string}>
                 <Icon size={17} />

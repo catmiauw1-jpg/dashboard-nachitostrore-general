@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { updateOrder } from "@/lib/orderRepository";
+import { evaluatePaymentMatchWithAi, type PaymentAgentCandidate } from "@/lib/paymentAiAgent";
 import {
   extractMercantilPayerName,
   namesLookRelated,
@@ -168,6 +169,37 @@ function paymentConfirmationText(customerName: string) {
   return "✅ *Pago confirmado. ¡Tu pedido entra a producción!* 🎉\nTu polera estará lista en *2 a 4 días hábiles.*\nTe avisamos cuando esté lista. 👕";
 }
 
+function candidateToAiInput(candidate: PaymentRequestCandidate): PaymentAgentCandidate {
+  const order = firstRelation(candidate.orders);
+  const conversation = firstRelation(candidate.conversations);
+
+  return {
+    id: candidate.id,
+    orderNumber: order?.order_number,
+    customerName: order?.customer_name ?? conversation?.customer_name,
+    customerPhone: order?.customer_phone ?? conversation?.phone,
+    amount: Number(candidate.amount),
+    paymentChoice: candidate.payment_choice,
+    requestedAt: candidate.requested_at,
+    proof: proofEvidenceFromPayload(candidate.verification_payload)
+  };
+}
+
+function aiDecisionIsSafe(candidate: PaymentRequestCandidate, payment: MercantilPaymentEmail, decisionReason: string) {
+  const proof = proofEvidenceFromPayload(candidate.verification_payload);
+
+  if (candidate.status !== "proof_received") return { ok: false, reason: "ai_rejected_without_customer_proof" };
+  if (!sameMoney(candidate.amount, payment.amount)) return { ok: false, reason: "ai_rejected_amount_mismatch" };
+  if (proof.amount !== undefined && !sameMoney(proof.amount, payment.amount)) {
+    return { ok: false, reason: "ai_rejected_proof_amount_mismatch" };
+  }
+  if (proof.payerName && payment.payerName && !namesLookRelated(proof.payerName, payment.payerName)) {
+    return { ok: false, reason: "ai_rejected_payer_mismatch" };
+  }
+
+  return { ok: true, reason: decisionReason };
+}
+
 async function findCandidates(supabase: SupabaseClient, payment: MercantilPaymentEmail) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
@@ -219,6 +251,58 @@ function chooseCandidate(candidates: PaymentRequestCandidate[], payment: Mercant
   if (proofMatches.length === 1 && candidates.length === 1) return { match: proofMatches[0], reason: "single_proof_received_and_amount" };
 
   return { match: null, reason: "ambiguous_amount" };
+}
+
+async function chooseCandidateWithAi(candidates: PaymentRequestCandidate[], payment: MercantilPaymentEmail) {
+  const proofCandidates = candidates.filter((candidate) => candidate.status === "proof_received");
+  if (!proofCandidates.length) return { match: null, reason: "ai_skipped_no_proof_candidates" };
+
+  const decision = await evaluatePaymentMatchWithAi(payment, proofCandidates.map(candidateToAiInput));
+  if (!decision) return { match: null, reason: "ai_unavailable" };
+  if (decision.decision !== "confirm") return { match: null, reason: `ai_${decision.decision}:${decision.reason}` };
+  if (!decision.amountMatch) return { match: null, reason: "ai_amount_not_confirmed" };
+  if (decision.confidence < Number(process.env.PAYMENT_AI_MIN_CONFIDENCE ?? 0.78)) {
+    return { match: null, reason: `ai_low_confidence:${decision.confidence}` };
+  }
+
+  const match = proofCandidates.find((candidate) => candidate.id === decision.candidateId);
+  if (!match) return { match: null, reason: "ai_candidate_not_found" };
+
+  const safe = aiDecisionIsSafe(match, payment, `ai_verified:${decision.reason}`);
+  if (!safe.ok) return { match: null, reason: safe.reason };
+
+  return { match, reason: safe.reason };
+}
+
+async function recordMercantilEmail(
+  supabase: SupabaseClient,
+  payment: MercantilPaymentEmail,
+  matchStatus: "unmatched" | "matched" | "manual_review",
+  matchReason: string,
+  matchedPaymentRequestId?: string
+) {
+  const row = {
+    email_id: payment.emailId ?? null,
+    amount: payment.amount,
+    payer_name: payment.payerName ?? null,
+    concept: payment.concept ?? null,
+    notification_number: payment.notificationNumber ?? null,
+    transaction_at_text: payment.transactionAtText ?? null,
+    email_timestamp: payment.emailTimestamp ?? null,
+    body: payment.body,
+    match_status: matchStatus,
+    matched_payment_request_id: matchedPaymentRequestId ?? null,
+    match_reason: matchReason
+  };
+
+  const query = payment.emailId
+    ? supabase.from("mercantil_payment_emails").upsert(row, { onConflict: "email_id" })
+    : supabase.from("mercantil_payment_emails").insert(row);
+  const { error } = await query;
+
+  if (error && error.code !== "42P01") {
+    console.warn("Mercantil email audit insert failed.", error.message);
+  }
 }
 
 async function confirmPayment(supabase: SupabaseClient, candidate: PaymentRequestCandidate, payment: MercantilPaymentEmail, reason: string) {
@@ -327,7 +411,12 @@ export async function POST(request: Request) {
 
     const supabase = requireSupabaseAdminClient();
     const candidates = await findCandidates(supabase, payment);
-    const { match, reason } = chooseCandidate(candidates, payment);
+    let { match, reason } = chooseCandidate(candidates, payment);
+    if (!match && candidates.length) {
+      const aiMatch = await chooseCandidateWithAi(candidates, payment);
+      match = aiMatch.match;
+      reason = aiMatch.reason;
+    }
 
     if (payload.dryRun) {
       return NextResponse.json(
@@ -350,6 +439,7 @@ export async function POST(request: Request) {
     }
 
     if (!match) {
+      await recordMercantilEmail(supabase, payment, "manual_review", reason);
       await supabase.from("bot_events").insert({
         event_type: "payment_gmail_unmatched",
         payload: {
@@ -378,6 +468,7 @@ export async function POST(request: Request) {
     }
 
     const confirmed = await confirmPayment(supabase, match, payment, reason);
+    await recordMercantilEmail(supabase, payment, "matched", reason, match.id);
     const replyText = paymentConfirmationText(confirmed.customerName);
 
     return NextResponse.json(
