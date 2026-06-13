@@ -354,6 +354,25 @@ async function recordMercantilEmail(
   }
 }
 
+async function wasMercantilEmailAlreadyMatched(supabase: SupabaseClient, payment: MercantilPaymentEmail) {
+  if (!payment.emailId) return false;
+
+  const { data, error } = await supabase
+    .from("mercantil_payment_emails")
+    .select("email_id, match_status, matched_payment_request_id")
+    .eq("email_id", payment.emailId)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code !== "42P01") {
+      console.warn("Mercantil email duplicate check failed.", error.message);
+    }
+    return false;
+  }
+
+  return data?.match_status === "matched" || Boolean(data?.matched_payment_request_id);
+}
+
 async function confirmPayment(supabase: SupabaseClient, candidate: PaymentRequestCandidate, payment: MercantilPaymentEmail, reason: string) {
   const now = new Date().toISOString();
   const paymentStatus = candidate.payment_choice === "50%" ? "50% pagado" : "Pago completo";
@@ -459,6 +478,14 @@ export async function POST(request: Request) {
     }
 
     const supabase = requireSupabaseAdminClient();
+    const alreadyMatched = await wasMercantilEmailAlreadyMatched(supabase, payment);
+    if (alreadyMatched) {
+      return NextResponse.json(
+        { ok: true, matched: false, ignored: true, reason: "mercantil_email_already_matched", emailId: payment.emailId },
+        { headers: secureJsonHeaders(request) }
+      );
+    }
+
     const candidates = await findCandidates(supabase, payment);
     let { match, reason } = chooseCandidate(candidates, payment);
     if (!match && candidates.length) {
