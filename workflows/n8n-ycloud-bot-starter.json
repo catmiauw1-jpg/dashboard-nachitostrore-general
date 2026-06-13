@@ -189,12 +189,13 @@
       "position": [
         -400,
         0
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const enriched = $('Attach AI Intent').first().json;\nconst ai = $input.first().json || {};\nconst proofEvidence = ai.proofEvidence || {};\nconst proofText = ai.proofText || enriched.proofText || '';\nreturn [{\n  json: {\n    ...enriched,\n    proofText,\n    ocrText: proofText,\n    proofEvidence,\n    proofAi: {\n      available: Boolean(ai.aiAvailable),\n      reason: ai.aiReason || ai.reason || null\n    }\n  }\n}];"
+        "jsCode": "const enriched = $('Normalize YCloud Event').first().json;\nconst ai = $input.first().json || {};\nconst proofEvidence = ai.proofEvidence || {};\nconst proofText = ai.proofText || enriched.proofText || '';\nreturn [{\n  json: {\n    ...enriched,\n    proofText,\n    ocrText: proofText,\n    proofEvidence,\n    proofAi: {\n      available: Boolean(ai.aiAvailable),\n      reason: ai.aiReason || ai.reason || null\n    }\n  }\n}];"
       },
       "id": "e4d7b315-45db-4473-bcc5-5ea3f6d3c042",
       "name": "Attach AI Proof Evidence",
@@ -208,66 +209,10 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ JSON.stringify({\n  cliente: $json.customerName || $json.name || 'Cliente WhatsApp',\n  telefono: $json.phone || $json.from || '',\n  mensaje: $json.messageText || $json.text || '',\n  tipo: $json.message?.type || 'text',\n  tieneAdjunto: Array.isArray($json.message?.attachments) && $json.message.attachments.length > 0,\n  adjuntos: $json.message?.attachments || [],\n  evento: $json.event || ''\n}) }}",
+        "text": "={{ JSON.stringify({\n  cliente: $json.customerName || $json.name || $json.replyTargetName || 'Cliente WhatsApp',\n  telefono: $json.replyTargetPhone || $json.phone || '',\n  mensajeCliente: $('Normalize YCloud Event').first().json.messageText || $('Normalize YCloud Event').first().json.text || '',\n  tipoMensaje: $('Normalize YCloud Event').first().json.message?.type || 'text',\n  respuestaSegura: $json.replyText || '',\n  mensajesSeguros: $json.replyMessages || [],\n  etapa: $json.stage || $json.state?.stage || '',\n  necesitaHumano: $json.needsHuman === true,\n  tieneQr: Boolean($json.payment_flow?.qrUrl || $json.paymentFlow?.qrUrl || $json.paymentQrUrl),\n  montoPago: $json.payment_flow?.amount || $json.paymentFlow?.amount || $json.paymentAmount || null,\n  pedido: $json.order || $json.state?.order || null,\n  estado: $json.state || null\n}) }}",
         "hasOutputParser": false,
         "options": {
-          "systemMessage": "Eres el clasificador de intenciones para el bot de ventas de Nachito Store por WhatsApp.\nDevuelve SOLO JSON valido, sin markdown, sin explicaciones y sin texto extra.\nNo inventes precios, productos ni pagos. No confirmes pagos. No modifiques stock.\nTu trabajo es entender lo que el cliente quiso decir aunque escriba con errores.\n\nIntenciones permitidas:\n- greeting: saludo o pregunta general sin pedido\n- unknown: no se entiende\n- confirm: confirma que el pedido esta bien o que quiere avanzar\n- cancel: quiere cancelar, dejar, anular o ya no quiere el pedido\n- fresh_order: quiere hacer otro pedido, pedido nuevo, empezar de nuevo o se equivoco\n- change: quiere cambiar color, talla, prenda o corregir el pedido\n- human: pide persona, vendedor o atencion humana\n- half_payment: quiere pagar 50%, mitad o adelanto\n- full_payment: quiere pagar completo, todo o total\n- payment_proof: solo si hay archivo adjunto o comprobante adjunto\n- faq: pregunta sobre tiempos, envio, tallas, precios o stock\n\nReglas de seguridad:\n- Usa payment_proof solo si tieneAdjunto es true.\n- Si hay duda, usa unknown con confidence bajo.\n- Para cancelar/cambiar/nuevo pedido, acepta frases naturales como: cancelar, cancelalo, me equivoque, pedido nuevo, otro pedido, quiero rehacerlo.\n- Para confirmar, acepta: si, si esta bien, correcto, perfecto, dale, ok, listo.\n- Para pago 50%, acepta: mitad, 50, adelanto, medio pago.\n- Para pago completo, acepta: completo, todo, total, pago completo.\n\nFormato obligatorio:\n{\"intent\":\"unknown\",\"confidence\":0.0,\"safeToUse\":false,\"reason\":\"\",\"paymentChoice\":null,\"deliveryZone\":null,\"department\":null,\"normalizedText\":\"\"}",
-          "maxIterations": 3,
-          "returnIntermediateSteps": false,
-          "enableStreaming": false
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3.1,
-      "position": [
-        -400,
-        -260
-      ],
-      "id": "98f11529-ca9b-4227-b41f-93a3d4d7c403",
-      "name": "AI Intent Agent",
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "model": "google/gemma-4-31b-it:free",
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
-      "typeVersion": 1,
-      "position": [
-        -400,
-        -80
-      ],
-      "id": "6aac568e-4a55-41ca-9d2c-b92dbdc7ab7f",
-      "name": "OpenRouter Chat Model",
-      "credentials": {
-        "openRouterApi": {
-          "id": "fZBAqAMRSFTMx6Rc",
-          "name": "OpenRouter account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const normalized = $('Normalize YCloud Event').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nlet parsed = null;\nconst jsonStart = raw.indexOf('{');\nconst jsonEnd = raw.lastIndexOf('}');\nconst jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (error) {\n  parsed = null;\n}\nconst allowed = new Set(['greeting','unknown','confirm','cancel','change','fresh_order','human','half_payment','full_payment','payment_proof','faq']);\nconst confidence = Number(parsed?.confidence || 0);\nconst hasAttachment = Array.isArray(normalized.message?.attachments) && normalized.message.attachments.length > 0;\nconst intent = allowed.has(parsed?.intent) ? parsed.intent : 'unknown';\nconst safeIntent = intent === 'payment_proof' && !hasAttachment ? 'unknown' : intent;\nconst aiIntent = {\n  intent: safeIntent,\n  confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,\n  safeToUse: parsed?.safeToUse !== false,\n  reason: String(parsed?.reason || raw || '').slice(0, 500),\n  paymentChoice: parsed?.paymentChoice === '50%' || parsed?.paymentChoice === 'completo' ? parsed.paymentChoice : null,\n  deliveryZone: parsed?.deliveryZone === 'santa_cruz' || parsed?.deliveryZone === 'otro_departamento' ? parsed.deliveryZone : null,\n  department: parsed?.department ? String(parsed.department).slice(0, 80) : null,\n  normalizedText: parsed?.normalizedText ? String(parsed.normalizedText).slice(0, 500) : ''\n};\nreturn [{ json: { ...normalized, aiIntent } }];"
-      },
-      "id": "c38f2448-5f2f-4ee4-bfda-7b7fd69fda3c",
-      "name": "Attach AI Intent",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -160,
-        -260
-      ]
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "={{ JSON.stringify({\n  cliente: $json.customerName || $json.name || $json.replyTargetName || 'Cliente WhatsApp',\n  telefono: $json.replyTargetPhone || $json.phone || '',\n  mensajeCliente: $('Normalize YCloud Event').first().json.messageText || $('Normalize YCloud Event').first().json.text || '',\n  respuestaSegura: $json.replyText || '',\n  mensajesSeguros: $json.replyMessages || [],\n  etapa: $json.stage || $json.state?.stage || '',\n  necesitaHumano: $json.needsHuman === true,\n  tieneQr: Boolean($json.payment_flow?.qrUrl || $json.paymentFlow?.qrUrl || $json.paymentQrUrl),\n  montoPago: $json.payment_flow?.amount || $json.paymentFlow?.amount || $json.paymentAmount || null,\n  pedido: $json.order || $json.state?.order || null,\n  aiIntent: $('Attach AI Intent').first().json.aiIntent || null\n}) }}",
-        "hasOutputParser": false,
-        "options": {
-          "systemMessage": "Eres el asistente humano de ventas de Nachito Store en WhatsApp.\nReescribes la respuesta segura del sistema para que suene natural, breve y amable.\nDevuelve SOLO JSON valido, sin markdown fuera del JSON.\n\nInformacion del negocio:\n- Nachito Store vende poleras oversize 200 g, algodon premium, cuello reforzado 3 cm y estampado DTF.\n- Colores: blanco arena y negro. Tallas: M, L, XL.\n- Catalogo desde Bs 125 a Bs 180. Personalizadas desde Bs 155.\n- Produccion: 2 a 4 dias habiles.\n- Santa Cruz: Yango o recoger. Costo de envio adicional.\n- Otros departamentos: flota jueves y viernes. Costo adicional.\n- Web: https://nachitostore.vercel.app\n\nReglas duras:\n- No cambies montos, tallas, productos, estados ni links que ya vienen en respuestaSegura/pedido.\n- No confirmes pago, no digas que pag?, no digas que entra a produccion salvo que respuestaSegura ya lo diga.\n- No inventes stock ni fechas exactas.\n- Si el cliente no entiende o dice que no tiene pedido, explica con calma que puede haber quedado un pedido abierto y ofrece opciones.\n- Si esta esperando comprobante, no repitas como robot: explica que falta comprobante o que puede cancelar/cambiar si fue error.\n- Si pregunta algo del negocio, responde con la informacion del negocio y luego guia al siguiente paso.\n- Mant?n mensajes cortos, como WhatsApp real. Maximo 2 mensajes salvo que sea resumen de pedido.\n- Usa el nombre del cliente si est? disponible.\n- No uses textos largos ni tono de call center.\n\nFormato obligatorio:\n{\"safeToUse\":true,\"replyMessages\":[\"mensaje 1\",\"mensaje 2 opcional\"],\"reason\":\"\"}",
+          "systemMessage": "Eres el unico agente conversacional de Nachito Store en WhatsApp.\nTu trabajo es responder como una persona real, breve y clara, usando la respuesta segura y el estado real que ya calculo PoleraFlow.\nDevuelve SOLO JSON valido, sin markdown fuera del JSON.\n\nInformacion del negocio:\n- Nachito Store vende poleras oversize 200 g, algodon premium, cuello reforzado 3 cm y estampado DTF.\n- Colores: blanco arena y negro. Tallas: M, L, XL.\n- Catalogo desde Bs 125 a Bs 180. Personalizadas desde Bs 155.\n- Produccion: 2 a 4 dias habiles.\n- Santa Cruz: Yango o recoger. El envio tiene costo adicional.\n- Otros departamentos: flota jueves y viernes. El envio tiene costo adicional.\n- Web: https://nachitostore.vercel.app\n\nReglas duras:\n- Usa respuestaSegura como base. Si esta vacia, no inventes: responde con replyMessages vacio.\n- No cambies montos, productos, tallas, colores, links, pedido ni estado.\n- No confirmes pago ni produccion salvo que respuestaSegura ya lo diga.\n- Si hay QR o monto de pago, conserva exactamente el monto y la instruccion del comprobante.\n- Si hay un resumen de pedido, mantenlo ordenado y completo.\n- Si el cliente pregunta algo general, responde con la informacion del negocio y guia a la web si no hay pedido.\n- Si el cliente dice que no tiene pedido pero hay un pedido abierto, explica que quedo un pedido anterior abierto y ofrece: confirmar, cancelar o hacer uno nuevo desde la web.\n- Si esta esperando comprobante, no repitas robotico: indica que falta foto o PDF del comprobante, y que puede cancelar si fue error.\n- No uses textos largos. Maximo 2 mensajes, salvo resumen de pedido o instrucciones de pago.\n- Tono: natural, amable, boliviano neutro, sin sonar como call center.\n- Usa el nombre del cliente si ayuda, pero no en cada mensaje.\n\nFormato obligatorio:\n{\"safeToUse\":true,\"replyMessages\":[\"mensaje 1\",\"mensaje 2 opcional\"],\"reason\":\"\"}",
           "maxIterations": 3,
           "returnIntermediateSteps": false,
           "enableStreaming": false
@@ -277,10 +222,10 @@
       "typeVersion": 3.1,
       "position": [
         320,
-        -260
+        -80
       ],
       "id": "2b2065f6-8d71-44b2-925f-1e707cf4ae52",
-      "name": "AI Human Reply Agent",
+      "name": "AI WhatsApp Agent",
       "onError": "continueRegularOutput"
     },
     {
@@ -292,10 +237,10 @@
       "typeVersion": 1,
       "position": [
         320,
-        -80
+        140
       ],
       "id": "1022ca31-7109-4c2a-a88f-cb31077ead8a",
-      "name": "OpenRouter Human Reply Model",
+      "name": "OpenRouter WhatsApp Model",
       "credentials": {
         "openRouterApi": {
           "id": "fZBAqAMRSFTMx6Rc",
@@ -306,15 +251,15 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const bot = $('Run Bot in PoleraFlow').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nconst originalMessages = Array.isArray(bot.replyMessages)\n  ? bot.replyMessages.map((message) => String(message || '').trim()).filter(Boolean)\n  : String(bot.replyText || '').split(/\\n{2,}/).map((message) => message.trim()).filter(Boolean);\n\nlet parsed = null;\nconst jsonStart = raw.indexOf('{');\nconst jsonEnd = raw.lastIndexOf('}');\nconst jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (error) {\n  parsed = null;\n}\n\nfunction cleanMessage(value) {\n  return String(value || '')\n    .replace(/\\r/g, '')\n    .replace(/\\n{4,}/g, '\\n\\n')\n    .trim()\n    .slice(0, 900);\n}\n\nconst hasQr = Boolean(bot.payment_flow?.qrUrl || bot.paymentFlow?.qrUrl || bot.paymentQrUrl);\nconst proposed = Array.isArray(parsed?.replyMessages)\n  ? parsed.replyMessages.map(cleanMessage).filter(Boolean).slice(0, 3)\n  : [];\nconst originalText = originalMessages.join('\\n\\n');\nconst proposedText = proposed.join('\\n\\n');\n\nconst originalAmounts = [...originalText.matchAll(/\\b\\d+(?:[.,]\\d+)?\\s*Bs\\b/gi)].map((match) => match[0]);\nconst preservesAmounts = originalAmounts.every((amount) => proposedText.includes(amount));\nconst safe = parsed?.safeToUse !== false && proposed.length > 0 && proposedText.length <= 1800 && (!originalAmounts.length || preservesAmounts);\n\nif (!bot.replyText || !originalMessages.length || !safe) {\n  return [{ json: { ...bot, aiHumanReply: { used: false, reason: parsed?.reason || raw || 'fallback_original' } } }];\n}\n\nreturn [{\n  json: {\n    ...bot,\n    replyText: proposedText,\n    replyMessages: proposed,\n    aiHumanReply: {\n      used: true,\n      reason: parsed?.reason || 'humanized',\n      hasQr\n    }\n  }\n}];"
+        "jsCode": "const bot = $('Run Bot in PoleraFlow').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nconst originalMessages = Array.isArray(bot.replyMessages)\n  ? bot.replyMessages.map((message) => String(message || '').trim()).filter(Boolean)\n  : String(bot.replyText || '').split(/\\n{2,}/).map((message) => message.trim()).filter(Boolean);\n\nlet parsed = null;\nconst jsonStart = raw.indexOf('{');\nconst jsonEnd = raw.lastIndexOf('}');\nconst jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (error) {\n  parsed = null;\n}\n\nfunction cleanMessage(value) {\n  return String(value || '')\n    .replace(/\\r/g, '')\n    .replace(/\\n{4,}/g, '\\n\\n')\n    .trim()\n    .slice(0, 900);\n}\n\nconst proposed = Array.isArray(parsed?.replyMessages)\n  ? parsed.replyMessages.map(cleanMessage).filter(Boolean).slice(0, 3)\n  : [];\nconst originalText = originalMessages.join('\\n\\n');\nconst proposedText = proposed.join('\\n\\n');\n\nconst originalAmounts = [...originalText.matchAll(/\\b\\d+(?:[.,]\\d+)?\\s*Bs\\b/gi)].map((match) => match[0]);\nconst preservesAmounts = originalAmounts.every((amount) => proposedText.includes(amount));\nconst preservesWeb = !originalText.includes('https://nachitostore.vercel.app') || proposedText.includes('https://nachitostore.vercel.app');\nconst safe = parsed?.safeToUse !== false && proposed.length > 0 && proposedText.length <= 1800 && preservesAmounts && preservesWeb;\n\nif (!bot.replyText || !originalMessages.length || !safe) {\n  return [{ json: { ...bot, aiWhatsAppReply: { used: false, reason: parsed?.reason || raw || 'fallback_original' } } }];\n}\n\nreturn [{\n  json: {\n    ...bot,\n    replyText: proposedText,\n    replyMessages: proposed,\n    aiWhatsAppReply: {\n      used: true,\n      reason: parsed?.reason || 'natural_reply'\n    }\n  }\n}];"
       },
       "id": "1eb86fb7-8f38-472c-a5c2-42360ee58cb6",
-      "name": "Attach AI Human Reply",
+      "name": "Attach AI WhatsApp Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         560,
-        -260
+        -80
       ]
     }
   ],
@@ -334,7 +279,7 @@
       "main": [
         [
           {
-            "node": "AI Intent Agent",
+            "node": "Extract Payment Proof with AI",
             "type": "main",
             "index": 0
           }
@@ -345,7 +290,7 @@
       "main": [
         [
           {
-            "node": "AI Human Reply Agent",
+            "node": "AI WhatsApp Agent",
             "type": "main",
             "index": 0
           }
@@ -414,51 +359,18 @@
         ]
       ]
     },
-    "AI Intent Agent": {
+    "AI WhatsApp Agent": {
       "main": [
         [
           {
-            "node": "Attach AI Intent",
+            "node": "Attach AI WhatsApp Reply",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Attach AI Intent": {
-      "main": [
-        [
-          {
-            "node": "Extract Payment Proof with AI",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenRouter Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Intent Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Human Reply Agent": {
-      "main": [
-        [
-          {
-            "node": "Attach AI Human Reply",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Attach AI Human Reply": {
+    "Attach AI WhatsApp Reply": {
       "main": [
         [
           {
@@ -469,11 +381,11 @@
         ]
       ]
     },
-    "OpenRouter Human Reply Model": {
+    "OpenRouter WhatsApp Model": {
       "ai_languageModel": [
         [
           {
-            "node": "AI Human Reply Agent",
+            "node": "AI WhatsApp Agent",
             "type": "ai_languageModel",
             "index": 0
           }

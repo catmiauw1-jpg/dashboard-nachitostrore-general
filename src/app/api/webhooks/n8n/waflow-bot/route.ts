@@ -90,6 +90,7 @@ interface AiIntentPayload {
   paymentChoice?: "50%" | "completo" | null;
   deliveryZone?: "santa_cruz" | "otro_departamento" | null;
   department?: string | null;
+  suggestedReply?: string;
 }
 
 interface WaflowPayload {
@@ -950,8 +951,26 @@ function parseAiIntent(payload: WaflowPayload): AiIntentPayload | null {
   return {
     ...candidate,
     intent,
-    confidence: Number.isFinite(confidence) ? confidence : undefined
+    confidence: Number.isFinite(confidence) ? confidence : undefined,
+    suggestedReply: cleanText(candidate.suggestedReply, 900)
   };
+}
+
+function safeSuggestedReply(aiIntent: AiIntentPayload | null, fallback: string) {
+  if (!fallback || !aiIntent?.suggestedReply || aiIntent.safeToUse === false) return fallback;
+
+  const confidence = typeof aiIntent.confidence === "number" ? aiIntent.confidence : 0;
+  if (confidence < 0.72) return fallback;
+
+  const reply = cleanText(aiIntent.suggestedReply, 900);
+  if (!reply) return fallback;
+
+  const fallbackAmounts = fallback.match(/\b\d+(?:[.,]\d+)?\s*Bs\b/gi) ?? [];
+  if (fallbackAmounts.length && !fallbackAmounts.every((amount) => reply.includes(amount))) {
+    return fallback;
+  }
+
+  return reply;
 }
 
 function chooseEffectiveIntent(
@@ -1547,9 +1566,9 @@ function nextBotStateV2(
     return { state: nextState, replyText, needsHuman };
   }
 
-  const faqReply = state.order ? buildFaqReply(text, state) : "";
+  const faqReply = buildFaqReply(text, state);
   if (faqReply) {
-    return { state: nextState, replyText: faqReply, needsHuman };
+    return { state: nextState, replyText: safeSuggestedReply(aiIntent, faqReply), needsHuman };
   }
 
   const stateStartedFromWeb = Boolean(state.order?.details && looksLikeWebOrderMessage(state.order.details));
@@ -1558,7 +1577,7 @@ function nextBotStateV2(
   if (!looksLikeWebOrderMessage(text) && (!state.order || !stateStartedFromWeb)) {
     nextState = { stage: "nuevo", updatedAt: new Date().toISOString() };
     nextState = markPromptSent(nextState, "start_on_website");
-    replyText = buildStartOnWebsiteReply(customerName);
+    replyText = safeSuggestedReply(aiIntent, buildStartOnWebsiteReply(customerName));
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1603,7 +1622,7 @@ function nextBotStateV2(
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
     nextState = markPromptSent(nextState, "payment_choice");
-    replyText = buildPendingOrderReply(state.stage);
+    replyText = safeSuggestedReply(aiIntent, buildPendingOrderReply(state.stage));
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1611,7 +1630,7 @@ function nextBotStateV2(
     looksLikeWebOrderMessage(text) || /\b(color|talla|precio|total|bs|frente|espalda|negro|blanco arena|personaliz|catalogo)\b/i.test(text);
 
   if (!looksUsefulForOrder && state.order) {
-    replyText = buildRecoveryReply(state, customerName);
+    replyText = safeSuggestedReply(aiIntent, buildRecoveryReply(state, customerName));
     return { state: nextState, replyText, needsHuman };
   }
 
