@@ -77,6 +77,7 @@ type CustomerIntent =
   | "half_payment"
   | "full_payment"
   | "payment_proof"
+  | "no_order_claim"
   | "greeting"
   | "faq"
   | "unknown";
@@ -776,6 +777,24 @@ function isCancelIntent(text: string) {
   ]);
 }
 
+function isNoOrderClaimIntent(text: string) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  return hasAnyPhrase(normalized, [
+    "no tengo pedido",
+    "no tengo ningun pedido",
+    "no hice pedido",
+    "yo no pedi",
+    "yo no pedi nada",
+    "no pedi nada",
+    "no tengo nada",
+    "no tengo pedido pendiente",
+    "no es mi pedido",
+    "ese pedido no es mio"
+  ]);
+}
+
 function isHalfPaymentIntent(text: string, state?: BotState) {
   const normalized = normalizeIntentText(text);
   if (state?.stage === "esperando_tipo_pago" && normalized === "1") return true;
@@ -896,6 +915,7 @@ function detectCustomerIntent(text: string, state: BotState, messageType: string
 
   if (looksLikeWebOrderMessage(text)) return "web_order";
   if (wantsHumanHelp(text)) return "human";
+  if (state.order && isNoOrderClaimIntent(text)) return "no_order_claim";
   if (state.order && isFreshOrderResetIntent(text)) return "fresh_order";
   if (state.order && isOrderChangeIntent(text)) return "change";
   if (isCancelIntent(text)) return "cancel";
@@ -921,6 +941,7 @@ const customerIntentValues = new Set<CustomerIntent>([
   "half_payment",
   "full_payment",
   "payment_proof",
+  "no_order_claim",
   "greeting",
   "faq",
   "unknown"
@@ -989,7 +1010,7 @@ function chooseEffectiveIntent(
     return hasAttachment ? "payment_proof" : ruleIntent;
   }
 
-  if (["cancel", "change", "fresh_order", "human"].includes(aiIntent.intent)) {
+  if (["cancel", "change", "fresh_order", "human", "no_order_claim"].includes(aiIntent.intent)) {
     return aiIntent.intent;
   }
 
@@ -1452,9 +1473,20 @@ function nextBotStateV2(
   const cancelsOrder = intent === "cancel";
   const wantsOrderChange = intent === "change";
   const wantsFreshOrder = intent === "fresh_order";
+  const claimsNoOrder = intent === "no_order_claim";
   let nextState: BotState = { ...state, updatedAt: new Date().toISOString() };
   let replyText = "";
   let needsHuman = false;
+
+  if (state.order && claimsNoOrder) {
+    return {
+      state: initialState(),
+      replyText: `Listo ${customerName}, cancelé el pedido abierto en este chat.\n\nSi quieres hacer uno nuevo, entra a la web:\n👉 ${nachitoStoreUrl}`,
+      needsHuman: false,
+      cancelOpenOrder: true,
+      cancelReason: "cliente indica que no tiene pedido"
+    };
+  }
 
   if (state.order && wantsFreshOrder && !looksLikeWebOrderMessage(text)) {
     return {
@@ -1515,6 +1547,12 @@ function nextBotStateV2(
     replyText = buildProofReviewReply();
     needsHuman = true;
     return { state: nextState, replyText, needsHuman };
+  }
+
+  if (state.stage === "esperando_comprobante" && intent === "greeting") {
+    replyText =
+      "Sí, estamos atendiendo.\n\nTengo tu pedido esperando comprobante. Si ya pagaste, manda la foto o PDF por aquí. Si fue error, responde CANCELAR.";
+    return { state: nextState, replyText: safeSuggestedReply(aiIntent, replyText), needsHuman };
   }
 
   if (isFreshWebOrderMessage(text, state)) {
@@ -1881,6 +1919,7 @@ export async function POST(request: Request) {
         payment_flow: paymentFlow,
         paymentRequest,
         canceledOrder,
+        sendPaymentQr,
         botActive,
         needsHuman
       },

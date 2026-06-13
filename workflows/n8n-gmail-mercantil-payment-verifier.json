@@ -16,9 +16,7 @@
         "event": "messageReceived",
         "simple": false,
         "filters": {
-          "q": "from:bmscsa@bmsc.com.bo subject:Notificaciones newer_than:2d",
-          "sender": "bmscsa@bmsc.com.bo",
-          "readStatus": "both"
+          "q": "from:bmscsa@bmsc.com.bo newer_than:7d"
         },
         "options": {}
       },
@@ -199,7 +197,7 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForEachItem",
+        "mode": "runOnceForAllItems",
         "jsCode": "const email = $('Normalize Mercantil Email').first().json;\nconst agent = $input.first().json || {};\nconst raw = String(agent.output || agent.text || agent.response || agent.message?.content || '').trim();\nlet parsed = null;\nconst jsonStart = raw.indexOf('{');\nconst jsonEnd = raw.lastIndexOf('}');\nconst jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (error) {\n  parsed = null;\n}\n\nfunction parseAmount(value) {\n  if (typeof value === 'number') return value;\n  if (typeof value !== 'string') return null;\n  const match = value.match(/[\\d.,]+/);\n  if (!match) return null;\n  const normalized = match[0].replace(/\\./g, '').replace(',', '.');\n  const amount = Number(normalized);\n  return Number.isFinite(amount) ? amount : null;\n}\n\nconst confidence = Number(parsed?.confidence || 0);\nconst aiEmailEvidence = {\n  isMercantilCreditQr: parsed?.isMercantilCreditQr === true,\n  amount: parseAmount(parsed?.amount),\n  payerName: parsed?.payerName ? String(parsed.payerName).slice(0, 160) : null,\n  concept: parsed?.concept ? String(parsed.concept).slice(0, 160) : null,\n  notificationNumber: parsed?.notificationNumber ? String(parsed.notificationNumber).slice(0, 80) : null,\n  transactionAtText: parsed?.transactionAtText ? String(parsed.transactionAtText).slice(0, 120) : null,\n  confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,\n  safeToUse: parsed?.safeToUse !== false,\n  reason: String(parsed?.reason || raw || '').slice(0, 240)\n};\n\nreturn [{ json: { ...email, aiEmailEvidence } }];"
       },
       "id": "80fe83a1-f410-4d67-bc05-19162fa191bf",
