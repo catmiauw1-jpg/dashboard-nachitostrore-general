@@ -1043,6 +1043,23 @@ function buildFaqReply(text: string, state: BotState) {
     return `Normalmente demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
   }
 
+  if (
+    hasAnyPhrase(normalized, [
+      "caracteristicas",
+      "como son",
+      "calidad",
+      "material",
+      "tela",
+      "algodon",
+      "cuello",
+      "estampado",
+      "dtf",
+      "oversize"
+    ])
+  ) {
+    return `Son poleras oversize de 200 g en algodon premium, con cuello reforzado de 3 cm y estampado DTF de buena duracion. Trabajamos tallas M, L y XL en blanco arena y negro.${suffix}`;
+  }
+
   if (hasAnyPhrase(normalized, ["envio", "entrega", "yango", "delivery", "recoger", "retiro"])) {
     return `En Santa Cruz puedes recoger o pedir envio por Yango. Para otros departamentos enviamos por flota jueves y viernes. El envio es adicional.${suffix}`;
   }
