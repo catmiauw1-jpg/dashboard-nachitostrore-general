@@ -1036,15 +1036,15 @@ function buildFaqReply(text: string, state: BotState) {
   if (isHalfPaymentIntent(text, state) || isFullPaymentIntent(text, state)) return "";
 
   const suffix = state.order
-    ? "\n\nSi seguimos con tu pedido, responde SI. Si quieres cambiarlo, dime CAMBIAR."
-    : `\n\nPara pedir, entra a la web:\n${nachitoStoreUrl}`;
+    ? " Si seguimos con tu pedido, responde SI. Si quieres cambiarlo, dime CAMBIAR."
+    : ` Para pedir, entra a la web: ${nachitoStoreUrl}`;
 
   if (hasAnyPhrase(normalized, ["cuanto tarda", "cuando estaria", "cuando esta listo", "tiempo", "demora", "dias"])) {
-    return `Normalmente demora 2 a 4 dias habiles.${suffix}`;
+    return `Normalmente demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
   }
 
   if (hasAnyPhrase(normalized, ["envio", "entrega", "yango", "delivery", "recoger", "retiro"])) {
-    return `Puedes recoger o pedir envio por Yango. El costo de envio se confirma por WhatsApp.${suffix}`;
+    return `En Santa Cruz puedes recoger o pedir envio por Yango. Para otros departamentos enviamos por flota jueves y viernes. El envio es adicional.${suffix}`;
   }
 
   if (hasAnyPhrase(normalized, ["pago", "pagar", "qr", "transferencia", "comprobante", "adelanto"])) {
@@ -1053,14 +1053,14 @@ function buildFaqReply(text: string, state: BotState) {
     }
 
     return state.order
-      ? "Puedes pagar 50% de adelanto o completo.\n\nResponde 1 para 50% o 2 para completo."
-      : `Primero envia tu pedido desde la web. Despues te paso las opciones de pago.\n${nachitoStoreUrl}`;
+      ? "Puedes pagar 50% de adelanto o completo. Responde 1 para 50% o 2 para completo."
+      : `Primero arma tu pedido desde la web y despues te paso las opciones de pago: ${nachitoStoreUrl}`;
   }
 
   if (hasAnyPhrase(normalized, ["precio", "cuesta", "vale", "costo", "cotizar"])) {
     return state.order
       ? `Tu pedido esta en ${state.order.total || "precio por confirmar"} Bs.${suffix}`
-      : `Los precios salen en la web. Si es personalizada, envia la cotizacion desde ahi.\n${nachitoStoreUrl}`;
+      : `Los precios del catalogo van desde Bs 125 a Bs 180 y las personalizadas desde Bs 155. Puedes cotizar desde la web: ${nachitoStoreUrl}`;
   }
 
   if (hasAnyPhrase(normalized, ["stock", "disponible", "hay talla", "talla disponible", "colores"])) {
