@@ -4,7 +4,6 @@ import { updateOrder } from "@/lib/orderRepository";
 import { evaluatePaymentMatchWithAi, type PaymentAgentCandidate } from "@/lib/paymentAiAgent";
 import {
   extractMercantilPayerName,
-  namesLookRelated,
   parseMoneyValue,
   proofEvidenceFromPayload,
   sameMoney
@@ -242,9 +241,6 @@ function aiDecisionIsSafe(candidate: PaymentRequestCandidate, payment: Mercantil
   if (proof.amount !== undefined && !sameMoney(proof.amount, payment.amount)) {
     return { ok: false, reason: "ai_rejected_proof_amount_mismatch" };
   }
-  if (proof.payerName && payment.payerName && !namesLookRelated(proof.payerName, payment.payerName)) {
-    return { ok: false, reason: "ai_rejected_payer_mismatch" };
-  }
 
   return { ok: true, reason: decisionReason };
 }
@@ -284,15 +280,11 @@ function chooseCandidate(candidates: PaymentRequestCandidate[], payment: Mercant
   const proofEvidenceMatches = proofMatches.filter((candidate) => {
     const proof = proofEvidenceFromPayload(candidate.verification_payload);
     const proofAmountMatches = proof.amount === undefined || sameMoney(proof.amount, payment.amount);
-    const proofNameMatches =
-      !payment.payerName ||
-      !proof.payerName ||
-      namesLookRelated(proof.payerName, payment.payerName);
     const proofReferenceMatches =
       !proof.reference ||
       `${payment.concept ?? ""} ${payment.notificationNumber ?? ""}`.toLowerCase().includes(proof.reference.toLowerCase());
 
-    return proofAmountMatches && proofNameMatches && proofReferenceMatches;
+    return proofAmountMatches && proofReferenceMatches;
   });
 
   if (proofEvidenceMatches.length === 1) return { match: proofEvidenceMatches[0], reason: "proof_evidence_and_amount" };

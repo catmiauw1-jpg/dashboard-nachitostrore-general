@@ -570,6 +570,10 @@ function buildPaymentConfirmedReply(customerName: string) {
   return `✅ *Pago confirmado. ¡Tu pedido entra a producción!* 🎉\nTu polera estará lista en *2 a 4 días hábiles.*\nTe avisamos cuando esté lista. 👕`;
 }
 
+function buildProofStillCheckingReply(customerName: string) {
+  return `Ya tengo tu comprobante, ${customerName}.\n\nEstoy cruzando el monto con la confirmacion del banco. Apenas quede confirmado, tu pedido pasa a preparacion.`;
+}
+
 function initialState(): BotState {
   return { stage: "nuevo" };
 }
@@ -1447,6 +1451,8 @@ function isOutboundProviderMessage(payload: WaflowPayload) {
   ).toLowerCase();
   const messageType = cleanText(payload.message_type ?? message.message_type, 40).toLowerCase();
   const event = cleanText(payload.event, 120).toLowerCase();
+  const isYCloudNonInboundEvent =
+    event.startsWith("whatsapp.") && !event.includes("inbound") && !event.includes("received");
 
   return Boolean(
     payload.message?.fromMe ??
@@ -1454,7 +1460,7 @@ function isOutboundProviderMessage(payload: WaflowPayload) {
       payload.payload?.message?.fromMe ??
       payload.fromMe ??
       false
-  ) || ["outbound", "outgoing", "sent"].includes(direction) || messageType === "outgoing" || event.includes("outbound") || event.includes("sent");
+  ) || isYCloudNonInboundEvent || ["outbound", "outgoing", "sent"].includes(direction) || messageType === "outgoing" || event.includes("outbound") || event.includes("sent");
 }
 
 function buildWebhookEventKey(payload: WaflowPayload, phone: string, text: string, messageType: string) {
@@ -1637,6 +1643,11 @@ function nextBotStateV2(
     nextState = { stage: "esperando_confirmacion", order, updatedAt: new Date().toISOString() };
     replyText = buildOrderConfirmationMessage(order);
     return { state: nextState, replyText, needsHuman };
+  }
+
+  if (state.stage === "comprobante_recibido") {
+    replyText = buildProofStillCheckingReply(customerName);
+    return { state: nextState, replyText, needsHuman: true };
   }
 
   if (state.stage === "esperando_ubicacion" && state.order) {
