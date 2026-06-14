@@ -1049,6 +1049,23 @@ function buildFaqReply(text: string, state: BotState) {
     "dias"
   ]);
 
+  const asksGeneralProductInfo =
+    hasAnyPhrase(normalized, ["info", "informacion", "datos", "detalle", "detalles", "explicame", "cuentame"]) &&
+    hasAnyPhrase(normalized, ["polera", "poleras", "prenda", "prendas", "producto", "productos"]);
+
+  const asksMeasurements = hasAnyPhrase(normalized, [
+    "medida",
+    "medidas",
+    "mide",
+    "miden",
+    "talla",
+    "tallas",
+    "ancho",
+    "largo",
+    "manga",
+    "cm"
+  ]);
+
   const asksProductDetails = hasAnyPhrase(normalized, [
       "caracteristicas",
       "caracteristica",
@@ -1071,18 +1088,28 @@ function buildFaqReply(text: string, state: BotState) {
       "fabricado",
       "gramaje",
       "premium"
-    ]);
+    ]) || asksGeneralProductInfo;
+
+  const productInfoReply =
+    "Son poleras oversize de 200 g en algodon premium, con cuello reforzado de 3 cm y estampado DTF de buena duracion. Trabajamos blanco arena y negro. Tallas: M, L y XL.";
+  const measurementReply = "Medidas referenciales: M ancho 56 cm, largo 72 cm, manga 42 cm; L ancho 58 cm, largo 75 cm, manga 43 cm; XL ancho 60 cm, largo 78 cm, manga 44 cm.";
 
   if (asksProductDetails && asksTiming) {
-    return `Estan hechas de algodon premium de 200 g, con cuello reforzado de 3 cm y estampado DTF. Normalmente tu pedido demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
+    const measurementText = asksMeasurements ? ` ${measurementReply}` : "";
+    return `${productInfoReply} Normalmente tu pedido demora 2 a 4 dias habiles desde que se confirma el pago.${measurementText}${suffix}`;
   }
 
   if (asksTiming) {
     return `Normalmente demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
   }
 
-  if (asksProductDetails) {
-    return `Son poleras oversize de 200 g en algodon premium, con cuello reforzado de 3 cm y estampado DTF de buena duracion. Trabajamos tallas M, L y XL en blanco arena y negro.${suffix}`;
+  if (asksMeasurements && !asksProductDetails) {
+    return `${measurementReply}${suffix}`;
+  }
+
+  if (asksProductDetails || asksMeasurements) {
+    const measurementText = asksMeasurements ? ` ${measurementReply}` : "";
+    return `${productInfoReply}${measurementText}${suffix}`;
   }
 
   if (hasAnyPhrase(normalized, ["envio", "entrega", "yango", "delivery", "recoger", "retiro"])) {
