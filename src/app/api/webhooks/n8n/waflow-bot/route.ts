@@ -925,8 +925,8 @@ function detectCustomerIntent(text: string, state: BotState, messageType: string
   if ((state.stage === "esperando_comprobante" && (!isTextLike || hasAttachment)) || (hasPaymentProofWords && hasAttachment)) {
     return "payment_proof";
   }
-  if (isGreetingIntent(text) || isNewOrderRequestIntent(text)) return "greeting";
   if (buildFaqReply(text, state)) return "faq";
+  if (isGreetingIntent(text) || isNewOrderRequestIntent(text)) return "greeting";
 
   return "unknown";
 }
@@ -1039,13 +1039,19 @@ function buildFaqReply(text: string, state: BotState) {
     ? " Si seguimos con tu pedido, responde SI. Si quieres cambiarlo, dime CAMBIAR."
     : ` Para pedir, entra a la web: ${nachitoStoreUrl}`;
 
-  if (hasAnyPhrase(normalized, ["cuanto tarda", "cuando estaria", "cuando esta listo", "tiempo", "demora", "dias"])) {
-    return `Normalmente demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
-  }
+  const asksTiming = hasAnyPhrase(normalized, [
+    "cuanto tarda",
+    "cuanto tarde",
+    "cuando estaria",
+    "cuando esta listo",
+    "tiempo",
+    "demora",
+    "dias"
+  ]);
 
-  if (
-    hasAnyPhrase(normalized, [
+  const asksProductDetails = hasAnyPhrase(normalized, [
       "caracteristicas",
+      "caracteristica",
       "como son",
       "calidad",
       "material",
@@ -1054,9 +1060,28 @@ function buildFaqReply(text: string, state: BotState) {
       "cuello",
       "estampado",
       "dtf",
-      "oversize"
-    ])
-  ) {
+      "oversize",
+      "de que esta hecha",
+      "de que esta hecho",
+      "que esta hecha",
+      "que esta hecho",
+      "hecha",
+      "hecho",
+      "fabricada",
+      "fabricado",
+      "gramaje",
+      "premium"
+    ]);
+
+  if (asksProductDetails && asksTiming) {
+    return `Estan hechas de algodon premium de 200 g, con cuello reforzado de 3 cm y estampado DTF. Normalmente tu pedido demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
+  }
+
+  if (asksTiming) {
+    return `Normalmente demora 2 a 4 dias habiles desde que se confirma el pago.${suffix}`;
+  }
+
+  if (asksProductDetails) {
     return `Son poleras oversize de 200 g en algodon premium, con cuello reforzado de 3 cm y estampado DTF de buena duracion. Trabajamos tallas M, L y XL en blanco arena y negro.${suffix}`;
   }
 
