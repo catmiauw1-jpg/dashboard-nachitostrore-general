@@ -66,6 +66,7 @@ interface PaymentRequestCandidate {
   conversation_id: string | null;
   amount: number | string;
   status: string;
+  proof_url?: string | null;
   payment_choice: "50%" | "completo";
   requested_at: string;
   external_reference: string | null;
@@ -214,9 +215,8 @@ function isMercantilSender(payload: GmailPaymentPayload) {
 }
 
 function paymentConfirmationText(customerName: string) {
-  return "✅ *Pago confirmado. ¡Tu pedido entra a producción!* 🎉\nTu polera estará lista en *2 a 4 días hábiles.*\nTe avisamos cuando esté lista. 👕";
+  return `Pago confirmado, ${customerName}.\n\nTu pedido entra a produccion. Estara listo en 2 a 4 dias habiles y te avisamos por aqui.`;
 }
-
 function candidateToAiInput(candidate: PaymentRequestCandidate): PaymentAgentCandidate {
   const order = firstRelation(candidate.orders);
   const conversation = firstRelation(candidate.conversations);
@@ -233,10 +233,19 @@ function candidateToAiInput(candidate: PaymentRequestCandidate): PaymentAgentCan
   };
 }
 
+function hasCustomerProof(candidate: PaymentRequestCandidate) {
+  const proof = proofEvidenceFromPayload(candidate.verification_payload);
+  const proofPayload = (candidate.verification_payload?.proof ??
+    candidate.verification_payload?.proofEvidence ??
+    {}) as Record<string, unknown>;
+  const payloadProofUrl = cleanText(proofPayload.url, 2048);
+  return candidate.status === "proof_received" || Boolean(candidate.proof_url) || Boolean(payloadProofUrl) || Boolean(proof.rawText);
+}
+
 function aiDecisionIsSafe(candidate: PaymentRequestCandidate, payment: MercantilPaymentEmail, decisionReason: string) {
   const proof = proofEvidenceFromPayload(candidate.verification_payload);
 
-  if (candidate.status !== "proof_received") return { ok: false, reason: "ai_rejected_without_customer_proof" };
+  if (!hasCustomerProof(candidate)) return { ok: false, reason: "ai_rejected_without_customer_proof" };
   if (!sameMoney(candidate.amount, payment.amount)) return { ok: false, reason: "ai_rejected_amount_mismatch" };
   if (proof.amount !== undefined && !sameMoney(proof.amount, payment.amount)) {
     return { ok: false, reason: "ai_rejected_proof_amount_mismatch" };
@@ -250,7 +259,7 @@ async function findCandidates(supabase: SupabaseClient, payment: MercantilPaymen
   const { data, error } = await supabase
     .from("payment_requests")
     .select(
-      "id, order_id, conversation_id, amount, status, payment_choice, requested_at, external_reference, verification_payload, orders(id, order_number, customer_name, customer_phone, order_status, payment_status), conversations(id, phone, customer_name)"
+      "id, order_id, conversation_id, amount, status, proof_url, payment_choice, requested_at, external_reference, verification_payload, orders(id, order_number, customer_name, customer_phone, order_status, payment_status), conversations(id, phone, customer_name)"
     )
     .in("status", ["pending", "proof_received"])
     .gte("requested_at", since)
@@ -276,7 +285,7 @@ function chooseCandidate(candidates: PaymentRequestCandidate[], payment: Mercant
   if (referenceMatches.length === 1) return { match: referenceMatches[0], reason: "reference_and_amount" };
   if (referenceMatches.length > 1) return { match: null, reason: "ambiguous_reference" };
 
-  const proofMatches = candidates.filter((candidate) => candidate.status === "proof_received");
+  const proofMatches = candidates.filter(hasCustomerProof);
   const proofEvidenceMatches = proofMatches.filter((candidate) => {
     const proof = proofEvidenceFromPayload(candidate.verification_payload);
     const proofAmountMatches = proof.amount === undefined || sameMoney(proof.amount, payment.amount);
@@ -295,7 +304,7 @@ function chooseCandidate(candidates: PaymentRequestCandidate[], payment: Mercant
 }
 
 async function chooseCandidateWithAi(candidates: PaymentRequestCandidate[], payment: MercantilPaymentEmail) {
-  const proofCandidates = candidates.filter((candidate) => candidate.status === "proof_received");
+  const proofCandidates = candidates.filter(hasCustomerProof);
   if (!proofCandidates.length) return { match: null, reason: "ai_skipped_no_proof_candidates" };
 
   const decision = await evaluatePaymentMatchWithAi(payment, proofCandidates.map(candidateToAiInput));
@@ -538,6 +547,22 @@ export async function POST(request: Request) {
     const confirmed = await confirmPayment(supabase, match, payment, reason);
     await recordMercantilEmail(supabase, payment, "matched", reason, match.id);
     const replyText = paymentConfirmationText(confirmed.customerName);
+
+    if (match.conversation_id) {
+      await supabase.from("messages").insert({
+        conversation_id: match.conversation_id,
+        direction: "outbound",
+        body: replyText,
+        source: "gmail-mercantil",
+        metadata: {
+          paymentRequestId: match.id,
+          orderNumber: confirmed.orderNumber,
+          paymentStatus: confirmed.paymentStatus,
+          mercantilEmailId: payment.emailId,
+          verificationReason: reason
+        }
+      });
+    }
 
     return NextResponse.json(
       {

@@ -26,7 +26,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const email = $json;\n\nfunction decodeBase64Url(value) {\n  if (!value) return '';\n  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');\n  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');\n  return Buffer.from(padded, 'base64').toString('utf8');\n}\n\nfunction collectParts(part, output = []) {\n  if (!part) return output;\n  if (part.mimeType && part.body?.data) {\n    output.push({ mimeType: part.mimeType, text: decodeBase64Url(part.body.data) });\n  }\n  if (Array.isArray(part.parts)) {\n    for (const child of part.parts) collectParts(child, output);\n  }\n  return output;\n}\n\nconst headers = Object.fromEntries((email.payload?.headers || []).map((header) => [String(header.name || '').toLowerCase(), header.value || '']));\nconst parts = collectParts(email.payload);\nconst plain = parts.find((part) => /text\\/plain/i.test(part.mimeType))?.text || '';\nconst html = parts.find((part) => /text\\/html/i.test(part.mimeType))?.text || '';\nconst body = plain || html.replace(/<[^>]*>/g, ' ') || email.textPlain || email.textHtml || email.snippet || '';\nconst from = email.from || headers.from || '';\n\nreturn {\n  json: {\n    id: email.id || email.messageId,\n    messageId: email.id || email.messageId,\n    threadId: email.threadId,\n    from,\n    subject: email.subject || headers.subject || '',\n    snippet: email.snippet || '',\n    body,\n    email_ts: email.internalDate ? new Date(Number(email.internalDate)).toISOString() : new Date().toISOString()\n  }\n};"
+        "jsCode": "const email = $json;\n\nfunction decodeBase64Url(value) {\n  if (!value) return '';\n  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');\n  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');\n  return Buffer.from(padded, 'base64').toString('utf8');\n}\n\nfunction stripHtml(value) {\n  return String(value || '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&aacute;/gi, 'a')\n    .replace(/&eacute;/gi, 'e')\n    .replace(/&iacute;/gi, 'i')\n    .replace(/&oacute;/gi, 'o')\n    .replace(/&uacute;/gi, 'u')\n    .replace(/&ntilde;/gi, 'n')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction collectParts(part, output = []) {\n  if (!part) return output;\n  if (part.mimeType && part.body?.data) {\n    output.push({ mimeType: part.mimeType, text: decodeBase64Url(part.body.data) });\n  }\n  if (Array.isArray(part.parts)) {\n    for (const child of part.parts) collectParts(child, output);\n  }\n  return output;\n}\n\nconst rawHeaders = email.payload?.headers || [];\nconst headers = Object.fromEntries(rawHeaders.map((header) => [String(header.name || '').toLowerCase(), header.value || '']));\nconst parts = collectParts(email.payload);\nconst plain = email.textPlain || parts.find((part) => /text\\/plain/i.test(part.mimeType))?.text || '';\nconst html = email.html || email.textHtml || parts.find((part) => /text\\/html/i.test(part.mimeType))?.text || '';\nconst body = plain || stripHtml(html) || email.snippet || '';\nconst from = email.from || headers.from || '';\n\nreturn {\n  json: {\n    id: email.id || email.messageId,\n    messageId: email.id || email.messageId,\n    threadId: email.threadId,\n    from,\n    subject: email.subject || headers.subject || '',\n    snippet: email.snippet || '',\n    body,\n    html,\n    email_ts: email.internalDate ? new Date(Number(email.internalDate)).toISOString() : (email.date || new Date().toISOString())\n  }\n};"
       },
       "id": "4cc250c6-5e56-454d-bbe4-8827875c7a4d",
       "name": "Normalize Mercantil Email",
@@ -237,7 +237,7 @@
       "main": [
         [
           {
-            "node": "AI Gmail Payment Agent",
+            "node": "Verify Payment in PoleraFlow",
             "type": "main",
             "index": 0
           }
@@ -279,39 +279,6 @@
           {
             "node": "Send Payment Confirmed WhatsApp",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Gmail Payment Agent": {
-      "main": [
-        [
-          {
-            "node": "Attach AI Email Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Attach AI Email Evidence": {
-      "main": [
-        [
-          {
-            "node": "Verify Payment in PoleraFlow",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenRouter Gmail Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Gmail Payment Agent",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
