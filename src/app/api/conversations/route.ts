@@ -51,6 +51,31 @@ async function sendYCloudTextMessage(phone: string | undefined, message: string)
   return { sent: true };
 }
 
+function manualSendError(status: ManualSendStatus) {
+  if (status.sent) return { statusCode: 200, message: "" };
+
+  if (status.reason === "missing_ycloud_config") {
+    return {
+      statusCode: 503,
+      message: "YCloud no esta configurado en produccion."
+    };
+  }
+
+  if (status.reason === "missing_phone") {
+    return {
+      statusCode: 400,
+      message: "Este chat no tiene un numero de WhatsApp valido."
+    };
+  }
+
+  return {
+    statusCode: 502,
+    message: status.detail
+      ? `YCloud rechazo el mensaje: ${status.detail}`
+      : "YCloud rechazo el mensaje."
+  };
+}
+
 export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: secureJsonHeaders(request) });
 }
@@ -104,6 +129,19 @@ export async function POST(request: Request) {
     }
 
     const sendStatus = await sendYCloudTextMessage(body.phone, cleanMessage);
+    if (!sendStatus.sent) {
+      const error = manualSendError(sendStatus);
+      console.warn("Manual WhatsApp send failed.", {
+        reason: sendStatus.reason,
+        detail: sendStatus.detail
+      });
+
+      return NextResponse.json(
+        { error: error.message, sendStatus },
+        { status: error.statusCode, headers: secureJsonHeaders(request) }
+      );
+    }
+
     const conversations = await createManualConversationMessage({
       id: body.id,
       phone: body.phone,

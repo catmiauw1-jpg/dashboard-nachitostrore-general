@@ -431,8 +431,13 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     });
 
     if (!response.ok) {
-      showToast("No se pudo guardar el mensaje manual.");
-      throw new Error("No se pudo guardar el mensaje manual.");
+      const errorPayload = (await response.json().catch(() => null)) as { error?: string; sendStatus?: { reason?: string } } | null;
+      const message =
+        errorPayload?.sendStatus?.reason === "missing_ycloud_config"
+          ? "No se envio: falta configurar YCloud."
+          : errorPayload?.error || "No se pudo enviar el mensaje por WhatsApp.";
+      showToast(message);
+      throw new Error(message);
     }
 
     const payload = (await response.json()) as
