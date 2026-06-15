@@ -186,6 +186,8 @@ export function WhatsAppSalesSection({
   const [chatQuery, setChatQuery] = useState("");
   const [isSending, setIsSending] = useState(false);
   const messageThreadRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const previousThreadRef = useRef({ chatKey: "", messageCount: 0 });
 
   const activeOrders = useMemo(
     () => orders.filter((order) => order.status !== "Cancelado" && order.status !== "Entregado"),
@@ -281,8 +283,27 @@ export function WhatsAppSalesSection({
   useEffect(() => {
     const thread = messageThreadRef.current;
     if (!thread) return;
-    thread.scrollTop = thread.scrollHeight;
-  }, [selectedChat?.messages, selectedChatKey]);
+
+    const messageCount = selectedChat?.messages?.length ?? 0;
+    const previousThread = previousThreadRef.current;
+    const chatChanged = previousThread.chatKey !== selectedChatKey;
+    const hasNewMessage = messageCount > previousThread.messageCount;
+
+    if (chatChanged || (hasNewMessage && shouldAutoScrollRef.current)) {
+      thread.scrollTop = thread.scrollHeight;
+      shouldAutoScrollRef.current = true;
+    }
+
+    previousThreadRef.current = { chatKey: selectedChatKey, messageCount };
+  }, [selectedChat?.messages?.length, selectedChatKey]);
+
+  const handleThreadScroll = () => {
+    const thread = messageThreadRef.current;
+    if (!thread) return;
+
+    const distanceFromBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 120;
+  };
 
   const copyText = async (text: string, label: string) => {
     await navigator.clipboard.writeText(text);
@@ -299,6 +320,7 @@ export function WhatsAppSalesSection({
   const sendManualMessage = async () => {
     if (!selectedChat || !draftMessage.trim()) return;
     setIsSending(true);
+    shouldAutoScrollRef.current = true;
 
     try {
       await onSendManualMessage(selectedChat, draftMessage);
@@ -429,7 +451,7 @@ export function WhatsAppSalesSection({
                 </button>
               </div>
 
-              <div className="whatsapp-console-thread" ref={messageThreadRef}>
+              <div className="whatsapp-console-thread" onScroll={handleThreadScroll} ref={messageThreadRef}>
                 {(selectedChat.messages ?? []).map((message) => (
                   <article
                     className={`wa-message ${message.direction === "outbound" ? "out" : "in"}`}
