@@ -331,7 +331,9 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       .on("postgres_changes", { event: "*", schema: "public", table: "customers" }, () => refreshIfVisible(false))
       .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => refreshIfVisible(false))
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => refreshIfVisible(false))
-      .on("postgres_changes", { event: "*", schema: "public", table: "stock" }, () => refreshIfVisible(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "base_garment_stock" }, () =>
+        refreshIfVisible(false)
+      )
       .subscribe();
 
     return () => {
