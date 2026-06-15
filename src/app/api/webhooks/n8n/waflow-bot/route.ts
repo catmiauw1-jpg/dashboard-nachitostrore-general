@@ -4,6 +4,7 @@ import { updateOrder } from "@/lib/orderRepository";
 import { type PaymentProofEvidence, parseProofEvidence, sameMoney } from "@/lib/paymentVerification";
 import { requireSupabaseAdminClient } from "@/lib/supabase";
 import { RequestSecurityError, assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
+import { generateWhatsappSalesReply } from "@/lib/whatsappSalesAgent";
 
 const maxBotBodyBytes = 1024 * 1024;
 const nachitoStoreUrl = process.env.NACHITO_STORE_URL ?? "https://nachitostore.vercel.app";
@@ -19,6 +20,7 @@ type BotStage =
   | "esperando_tipo_pago"
   | "esperando_comprobante"
   | "comprobante_recibido"
+  | "pago_confirmado"
   | "atencion_manual";
 
 interface BotOrder {
@@ -1208,6 +1210,27 @@ function humanHelpHint() {
   return "";
 }
 
+async function buildSmartAgentReply(params: {
+  text: string;
+  customerName: string;
+  phone?: string;
+  state: BotState;
+  fallback: string;
+}) {
+  return generateWhatsappSalesReply({
+    customerName: params.customerName,
+    customerPhone: params.phone,
+    incomingText: params.text,
+    stage: params.state.stage,
+    fallbackReply: params.fallback,
+    order: params.state.order,
+    deliveryArea: params.state.deliveryArea,
+    deliveryDepartment: params.state.deliveryDepartment,
+    paymentChoice: params.state.paymentChoice,
+    paymentAmount: params.state.paymentAmount
+  });
+}
+
 function splitReplyMessages(replyText: string) {
   if (/^(\u00A1Hola!|\uD83D\uDCCB \*Pedido nuevo:\*|\u2705 Pedido confirmado|\uD83D\uDCCE Comprobante recibido|Pedido nuevo:|\u23F3 En revisi\u00F3n|Perfecto\.)/.test(replyText.trim())) {
     return [replyText.trim()];
@@ -1317,6 +1340,30 @@ async function logBotEvent(
     payload: payload.data ?? {},
     source: "waflow-bot"
   });
+}
+
+async function wasSameReplyRecentlySent(
+  supabase: SupabaseClient,
+  conversationId: string,
+  replyText: string,
+  windowMs = 6 * 60 * 1000
+) {
+  const normalizedReply = normalizeIntentText(replyText);
+  if (!normalizedReply) return false;
+
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { data, error } = await supabase
+    .from("messages")
+    .select("body, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  if (error || !data) return false;
+
+  return data.some((message: { body?: string }) => normalizeIntentText(message.body ?? "") === normalizedReply);
 }
 
 async function upsertPaymentRequest(
@@ -1531,14 +1578,15 @@ function nextBotState(state: BotState, text: string, customerName: string, messa
   return { state: nextState, replyText, needsHuman };
 }
 
-function nextBotStateV2(
+async function nextBotStateV2(
   state: BotState,
   text: string,
   customerName: string,
   messageType: string,
   hasAttachment = false,
-  aiIntent: AiIntentPayload | null = null
-): BotDecision {
+  aiIntent: AiIntentPayload | null = null,
+  phone?: string
+): Promise<BotDecision> {
   const lower = text.toLowerCase();
   const isTextLike = isTextLikeMessage(messageType, text);
   const hasPaymentProofWords = /comprobante|pagad|pagu|transfer|deposit/i.test(lower);
@@ -1606,7 +1654,13 @@ function nextBotStateV2(
 
   if (state.stage === "esperando_comprobante" && hasPaymentProofWords && !hasAttachment && isTextLike) {
     nextState = { ...nextState, stage: "esperando_comprobante" };
-    replyText = `Perfecto ${customerName}.\n\nMandame la foto del comprobante para revisarlo.`;
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: `Perfecto ${customerName}. Mandame la foto o PDF del comprobante para revisarlo.`
+    });
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1625,8 +1679,13 @@ function nextBotStateV2(
   }
 
   if (state.stage === "esperando_comprobante" && intent === "greeting") {
-    replyText =
-      "Sí, estamos atendiendo.\n\nTengo tu pedido esperando comprobante. Si ya pagaste, manda la foto o PDF por aquí. Si fue error, responde CANCELAR.";
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: "Si, estamos atendiendo. Tengo tu pedido esperando comprobante. Si ya pagaste, mandame la foto o PDF por aqui."
+    });
     return { state: nextState, replyText: safeSuggestedReply(aiIntent, replyText), needsHuman };
   }
 
@@ -1646,8 +1705,25 @@ function nextBotStateV2(
   }
 
   if (state.stage === "comprobante_recibido") {
-    replyText = buildProofStillCheckingReply(customerName);
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: `Ya tengo tu comprobante, ${customerName}. Lo estoy verificando con el correo del banco; apenas quede confirmado te aviso por aqui.`
+    });
     return { state: nextState, replyText, needsHuman: true };
+  }
+
+  if (state.stage === "pago_confirmado") {
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: `Tu pago ya esta confirmado, ${customerName}. Tu pedido esta en preparacion y te avisamos cuando este listo.`
+    });
+    return { state: nextState, replyText, needsHuman: false };
   }
 
   if (state.stage === "esperando_ubicacion" && state.order) {
@@ -1686,7 +1762,14 @@ function nextBotStateV2(
 
   const faqReply = buildFaqReply(text, state);
   if (faqReply) {
-    return { state: nextState, replyText: safeSuggestedReply(aiIntent, faqReply), needsHuman };
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: safeSuggestedReply(aiIntent, faqReply)
+    });
+    return { state: nextState, replyText, needsHuman };
   }
 
   const stateStartedFromWeb = Boolean(state.order?.details && looksLikeWebOrderMessage(state.order.details));
@@ -1695,7 +1778,13 @@ function nextBotStateV2(
   if (!looksLikeWebOrderMessage(text) && (!state.order || !stateStartedFromWeb)) {
     nextState = { stage: "nuevo", updatedAt: new Date().toISOString() };
     nextState = markPromptSent(nextState, "start_on_website");
-    replyText = safeSuggestedReply(aiIntent, buildStartOnWebsiteReply(customerName));
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: safeSuggestedReply(aiIntent, buildStartOnWebsiteReply(customerName))
+    });
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1740,7 +1829,13 @@ function nextBotStateV2(
 
   if (state.stage === "esperando_tipo_pago" && state.order) {
     nextState = markPromptSent(nextState, "payment_choice");
-    replyText = safeSuggestedReply(aiIntent, buildPendingOrderReply(state.stage));
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: safeSuggestedReply(aiIntent, buildPendingOrderReply(state.stage))
+    });
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1748,7 +1843,13 @@ function nextBotStateV2(
     looksLikeWebOrderMessage(text) || /\b(color|talla|precio|total|bs|frente|espalda|negro|blanco arena|personaliz|catalogo)\b/i.test(text);
 
   if (!looksUsefulForOrder && state.order) {
-    replyText = safeSuggestedReply(aiIntent, buildRecoveryReply(state, customerName));
+    replyText = await buildSmartAgentReply({
+      text,
+      customerName,
+      phone,
+      state: nextState,
+      fallback: safeSuggestedReply(aiIntent, buildRecoveryReply(state, customerName))
+    });
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1878,20 +1979,25 @@ export async function POST(request: Request) {
 
     if (latestStateError) throw latestStateError;
 
-    const currentState = ((latestStateMessage?.metadata as { botState?: BotState } | null)?.botState ?? initialState()) as BotState;
+    let currentState = ((latestStateMessage?.metadata as { botState?: BotState } | null)?.botState ?? initialState()) as BotState;
+    if (conversation.status === "pago_confirmado") {
+      currentState = { ...currentState, stage: "pago_confirmado" };
+    }
     const previousStage = currentState.stage;
     const botCustomerName = resolveCustomerName(conversation.customer_name, name, {
       order: currentState.order ?? incomingOrderPreview
     });
-    const { state, replyText, needsHuman, botActive, cancelOpenOrder, cancelReason, sendPaymentQr } = nextBotStateV2(
+    const decision = await nextBotStateV2(
       currentState,
       text,
       botCustomerName,
       messageType,
       Boolean(attachmentUrl),
-      aiIntent
+      aiIntent,
+      phone
     );
-    const replyMessages = splitReplyMessages(replyText);
+    const { state, needsHuman, botActive, cancelOpenOrder, cancelReason, sendPaymentQr } = decision;
+    let replyText = decision.replyText;
     const canceledOrder = cancelOpenOrder
       ? await cancelLatestOpenOrder(supabase, {
           conversationId: conversation.id,
@@ -1929,6 +2035,12 @@ export async function POST(request: Request) {
         aiIntent
       }
     });
+
+    if (replyText && (await wasSameReplyRecentlySent(supabase, conversation.id, replyText))) {
+      replyText = "";
+    }
+
+    const replyMessages = splitReplyMessages(replyText);
 
     if (replyText) {
       await supabase.from("messages").insert({
