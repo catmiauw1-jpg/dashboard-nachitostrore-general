@@ -8,14 +8,22 @@ interface RateLimitOptions {
   scope?: string;
 }
 
-const allowedOrigins = new Set([
+const productionOrigins = [
   "https://nachitostore.vercel.app",
-  "https://admin-dhasboard.vercel.app",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:5500",
-  "http://127.0.0.1:5501"
-]);
+  "https://admin-dhasboard.vercel.app"
+];
+
+const devOrigins =
+  process.env.NODE_ENV === "development"
+    ? [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5500",
+        "http://127.0.0.1:5501"
+      ]
+    : [];
+
+const allowedOrigins = new Set([...productionOrigins, ...devOrigins]);
 
 export class RequestSecurityError extends Error {
   status: number;
@@ -31,7 +39,9 @@ export function secureJsonHeaders(request?: Request) {
   const origin = request?.headers.get("origin");
 
   if (origin) {
-    headers["Access-Control-Allow-Origin"] = allowedOrigins.has(origin) ? origin : "https://nachitostore.vercel.app";
+    headers["Access-Control-Allow-Origin"] = allowedOrigins.has(origin)
+      ? origin
+      : "https://nachitostore.vercel.app";
     headers.Vary = "Origin";
   }
 
