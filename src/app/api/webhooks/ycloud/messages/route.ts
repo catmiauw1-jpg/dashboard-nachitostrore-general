@@ -76,7 +76,7 @@ function extractMessagePayload(payload: Record<string, unknown>) {
 }
 
 function isAuthorized(request: Request) {
-  const secret = process.env.YCLOUD_WEBHOOK_SECRET || process.env.POLERAFLOW_WEBHOOK_SECRET;
+  const secret = process.env.YCLOUD_WEBHOOK_SECRET;
   if (!secret) return true;
 
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
