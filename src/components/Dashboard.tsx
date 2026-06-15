@@ -16,6 +16,7 @@ import { WhatsAppSalesSection } from "@/components/sections/WhatsAppSalesSection
 import { Sidebar } from "@/components/Sidebar";
 import { Toast } from "@/components/Toast";
 import { Topbar } from "@/components/Topbar";
+import { createSupabaseBrowserClient } from "@/lib/browserSupabase";
 import { displayStockName } from "@/lib/format";
 import {
   navigationItems,
@@ -209,9 +210,9 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   const orderIdsRef = useRef(new Set<string>());
   const hasLoadedOrdersRef = useRef(false);
 
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
     setToast(message);
-  };
+  }, []);
 
   const normalizeChatPhone = (value?: string) => {
     const digits = value?.replace(/\D/g, "") ?? "";
@@ -290,81 +291,62 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
       }
     }
-  }, [apiFetch]);
+  }, [apiFetch, showToast]);
 
   useEffect(() => {
     document.body.classList.toggle("dark", isDark);
   }, [isDark]);
 
   useEffect(() => {
-    async function loadProducts() {
-      try {
-        const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse, conversationsResponse] = await Promise.all([
-          apiFetch("/api/products", { cache: "no-store" }),
-          apiFetch("/api/stock", { cache: "no-store" }),
-          apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
-          apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }),
-          apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" }),
-          apiFetch(`/api/conversations?ts=${Date.now()}`, { cache: "no-store" })
-        ]);
-
-        if (productsResponse.ok) {
-          const nextProducts = (await productsResponse.json()) as Product[];
-          if (nextProducts.length) setProductList(nextProducts);
-        }
-
-        if (stockResponse.ok) {
-          const data = (await stockResponse.json()) as { stock: StockItem[]; products: Product[] };
-          setStockList(data.stock);
-          if (data.products.length) setProductList(data.products);
-        }
-
-        if (ordersResponse.ok) {
-          const nextOrders = (await ordersResponse.json()) as Order[];
-          setOrderList(nextOrders);
-          orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
-          hasLoadedOrdersRef.current = true;
-        }
-
-        if (customersResponse.ok) {
-          setCustomerList((await customersResponse.json()) as Customer[]);
-        }
-
-        if (expensesResponse.ok) {
-          setExpenseList((await expensesResponse.json()) as Expense[]);
-        }
-
-        if (conversationsResponse.ok) {
-          setChats((await conversationsResponse.json()) as Conversation[]);
-        }
-      } catch {
-        showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
-      }
-    }
-
-    void loadProducts();
-  }, [apiFetch]);
+    void refreshBusinessData({ showError: true });
+  }, [refreshBusinessData]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
+    const refreshIfVisible = (notifyNewOrders: boolean) => {
       if (document.visibilityState === "visible") {
-        void refreshBusinessData({ notifyNewOrders: true });
+        void refreshBusinessData({ notifyNewOrders });
       }
-    }, 2000);
+    };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void refreshBusinessData({ notifyNewOrders: true });
-      }
+      refreshIfVisible(true);
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    const supabase = createSupabaseBrowserClient();
+
+    if (!supabase) {
+      const interval = window.setInterval(() => refreshIfVisible(true), 30_000);
+
+      return () => {
+        window.clearInterval(interval);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+    }
+
+    const channel = supabase
+      .channel("dashboard-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => refreshIfVisible(true))
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => refreshIfVisible(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "customers" }, () => refreshIfVisible(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => refreshIfVisible(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => refreshIfVisible(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock" }, () => refreshIfVisible(false))
+      .subscribe();
 
     return () => {
-      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refreshBusinessData]);
+
+  const nextOrderNumber = useMemo(() => {
+    const numbers = orderList
+      .map((order) => Number(order.id.replace("#", "")))
+      .filter((value) => Number.isFinite(value));
+
+    return Math.max(1028, ...numbers) + 1;
+  }, [orderList]);
 
   const toggleBot = (index: number) => {
     const chat = chats[index];
@@ -446,14 +428,6 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     } else {
       showToast("Mensaje manual guardado en el chat.");
     }
-  };
-
-  const getNextOrderNumber = () => {
-    const numbers = orderList
-      .map((order) => Number(order.id.replace("#", "")))
-      .filter((value) => Number.isFinite(value));
-
-    return Math.max(1028, ...numbers) + 1;
   };
 
   const handleCreateOrder = (order: Order) => {
@@ -884,7 +858,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       <OrderFormModal
         customers={customerOptions}
         isOpen={isOrderModalOpen}
-        nextOrderNumber={getNextOrderNumber()}
+        nextOrderNumber={nextOrderNumber}
         products={productList}
         onClose={() => setIsOrderModalOpen(false)}
         onSubmit={handleCreateOrder}
