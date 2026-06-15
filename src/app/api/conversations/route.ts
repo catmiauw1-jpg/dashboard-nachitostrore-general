@@ -4,12 +4,49 @@ import { createManualConversationMessage, readConversations, updateConversationB
 import { RequestSecurityError, assertAllowedOrigin, secureJsonHeaders } from "@/lib/requestSecurity";
 
 type ManualSendStatus =
-  | { sent: true }
+  | { sent: true; providerMessageId?: string; response?: Record<string, unknown> }
   | { sent: false; reason: "missing_ycloud_config" | "missing_phone" | "ycloud_error"; detail?: string };
 
 function normalizeYCloudPhone(value?: string) {
   const digits = (value ?? "").replace(/\D/g, "");
   return digits ? `+${digits}` : "";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function getNestedRecord(source: Record<string, unknown>, key: string) {
+  return asRecord(source[key]) ?? {};
+}
+
+function getString(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+
+  return "";
+}
+
+function extractYCloudMessageId(payload?: Record<string, unknown>) {
+  if (!payload) return undefined;
+
+  const data = getNestedRecord(payload, "data");
+  const message = getNestedRecord(payload, "message");
+  const dataMessage = getNestedRecord(data, "message");
+  const whatsappMessage = getNestedRecord(payload, "whatsappMessage");
+
+  return (
+    getString(payload, ["id", "messageId", "message_id", "wamid"]) ||
+    getString(data, ["id", "messageId", "message_id", "wamid"]) ||
+    getString(message, ["id", "messageId", "message_id", "wamid"]) ||
+    getString(dataMessage, ["id", "messageId", "message_id", "wamid"]) ||
+    getString(whatsappMessage, ["id", "messageId", "message_id", "wamid"]) ||
+    undefined
+  );
 }
 
 async function sendYCloudTextMessage(phone: string | undefined, message: string): Promise<ManualSendStatus> {
@@ -48,7 +85,13 @@ async function sendYCloudTextMessage(phone: string | undefined, message: string)
     };
   }
 
-  return { sent: true };
+  const payload = asRecord(await response.json().catch(() => null)) ?? undefined;
+
+  return {
+    sent: true,
+    providerMessageId: extractYCloudMessageId(payload),
+    response: payload
+  };
 }
 
 function manualSendError(status: ManualSendStatus) {
@@ -145,7 +188,10 @@ export async function POST(request: Request) {
     const conversations = await createManualConversationMessage({
       id: body.id,
       phone: body.phone,
-      body: cleanMessage
+      body: cleanMessage,
+      providerMessageId: sendStatus.providerMessageId,
+      deliveryStatus: sendStatus.providerMessageId ? "sent" : "accepted",
+      deliveryPayload: sendStatus.response
     });
 
     return NextResponse.json(

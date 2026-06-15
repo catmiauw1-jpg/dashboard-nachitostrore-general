@@ -204,6 +204,12 @@ export interface ConversationMessage {
   source?: string;
   attachmentUrl?: string;
   attachmentType?: string;
+  providerMessageId?: string;
+  deliveryStatus?: "local" | "accepted" | "sent" | "delivered" | "read" | "failed";
+  deliveryError?: string;
+  sentAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
 }
 
 export interface NavigationItem {

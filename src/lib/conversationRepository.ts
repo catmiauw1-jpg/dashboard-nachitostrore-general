@@ -20,6 +20,29 @@ interface MessageRow {
   source: string | null;
   created_at: string | null;
   metadata: Record<string, unknown> | null;
+  provider_message_id?: string | null;
+  delivery_status?: string | null;
+  delivery_error?: string | null;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+}
+
+interface ManualMessageInput {
+  id?: string;
+  phone?: string;
+  body: string;
+  providerMessageId?: string;
+  deliveryStatus?: string;
+  deliveryPayload?: Record<string, unknown>;
+}
+
+interface DeliveryStatusInput {
+  providerMessageId: string;
+  status: string;
+  error?: string;
+  payload?: Record<string, unknown>;
+  occurredAt?: string;
 }
 
 function normalizePhone(value: unknown) {
@@ -44,6 +67,32 @@ function messageAttachment(message: MessageRow) {
     attachmentUrl: attachmentUrl || detailsUrl || undefined,
     attachmentType: attachmentType || detailsMimeType || detailsType || rawType || undefined
   };
+}
+
+function mapMessage(message: MessageRow): ConversationMessage {
+  const attachment = messageAttachment(message);
+
+  return {
+    id: message.id,
+    direction: message.direction,
+    body: message.body ?? "",
+    createdAt: message.created_at ?? undefined,
+    source: message.source ?? undefined,
+    attachmentUrl: attachment.attachmentUrl,
+    attachmentType: attachment.attachmentType,
+    providerMessageId: message.provider_message_id ?? undefined,
+    deliveryStatus: message.delivery_status as ConversationMessage["deliveryStatus"] | undefined,
+    deliveryError: message.delivery_error ?? undefined,
+    sentAt: message.sent_at ?? undefined,
+    deliveredAt: message.delivered_at ?? undefined,
+    readAt: message.read_at ?? undefined
+  };
+}
+
+function isMissingDeliveryColumn(error?: { message?: string } | null) {
+  return /provider_message_id|delivery_status|delivery_error|sent_at|delivered_at|read_at|schema cache|column .* does not exist/i.test(
+    error?.message ?? ""
+  );
 }
 
 function humanStage(stage?: string | null) {
@@ -117,12 +166,30 @@ export async function readConversations(): Promise<Conversation[]> {
   const messagesByConversation = new Map<string, ConversationMessage[]>();
 
   if (ids.length) {
-    const { data: messages, error: messagesError } = await supabase
+    const messageColumns =
+      "id, conversation_id, direction, body, source, created_at, metadata, provider_message_id, delivery_status, delivery_error, sent_at, delivered_at, read_at";
+    const legacyMessageColumns = "id, conversation_id, direction, body, source, created_at, metadata";
+
+    const messageQuery = await supabase
       .from("messages")
-      .select("id, conversation_id, direction, body, source, created_at, metadata")
+      .select(messageColumns)
       .in("conversation_id", ids)
       .order("created_at", { ascending: false })
       .limit(600);
+    let messages = messageQuery.data as MessageRow[] | null;
+    let messagesError = messageQuery.error;
+
+    if (messagesError && isMissingDeliveryColumn(messagesError)) {
+      const fallback = await supabase
+        .from("messages")
+        .select(legacyMessageColumns)
+        .in("conversation_id", ids)
+        .order("created_at", { ascending: false })
+        .limit(600);
+
+      messages = fallback.data as MessageRow[] | null;
+      messagesError = fallback.error;
+    }
 
     if (!messagesError) {
       (messages as MessageRow[] | null)?.forEach((message) => {
@@ -132,16 +199,7 @@ export async function readConversations(): Promise<Conversation[]> {
 
         const list = messagesByConversation.get(message.conversation_id) ?? [];
         if (list.length < 25) {
-          const attachment = messageAttachment(message);
-          list.push({
-            id: message.id,
-            direction: message.direction,
-            body: message.body ?? "",
-            createdAt: message.created_at ?? undefined,
-            source: message.source ?? undefined,
-            attachmentUrl: attachment.attachmentUrl,
-            attachmentType: attachment.attachmentType
-          });
+          list.push(mapMessage(message));
           messagesByConversation.set(message.conversation_id, list);
         }
       });
@@ -181,7 +239,7 @@ export async function updateConversationBot(input: { id?: string; phone?: string
   return readConversations();
 }
 
-export async function createManualConversationMessage(input: { id?: string; phone?: string; body: string }) {
+export async function createManualConversationMessage(input: ManualMessageInput) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return [];
 
@@ -204,18 +262,38 @@ export async function createManualConversationMessage(input: { id?: string; phon
   if (!conversation?.id) throw new Error("Conversacion no encontrada.");
 
   const now = new Date().toISOString();
+  const metadata = {
+    tipo: "manual",
+    autor: "tienda",
+    timestamp: now,
+    provider: input.providerMessageId ? "ycloud" : "local",
+    ycloud: input.deliveryPayload ?? null
+  };
 
-  const { error: messageError } = await supabase.from("messages").insert({
+  const insertPayload = {
     conversation_id: conversation.id,
     direction: "outbound",
     body,
     source: "manual",
-    metadata: {
-      tipo: "manual",
-      autor: "tienda",
-      timestamp: now
-    }
-  });
+    metadata,
+    provider_message_id: input.providerMessageId ?? null,
+    delivery_status: input.deliveryStatus ?? (input.providerMessageId ? "sent" : "local"),
+    sent_at: input.providerMessageId ? now : null
+  };
+
+  let { error: messageError } = await supabase.from("messages").insert(insertPayload);
+
+  if (messageError && isMissingDeliveryColumn(messageError)) {
+    const legacyPayload = {
+      conversation_id: insertPayload.conversation_id,
+      direction: insertPayload.direction,
+      body: insertPayload.body,
+      source: insertPayload.source,
+      metadata: insertPayload.metadata
+    };
+    const legacyInsert = await supabase.from("messages").insert(legacyPayload);
+    messageError = legacyInsert.error;
+  }
 
   if (messageError) throw new Error(messageError.message);
 
@@ -230,4 +308,54 @@ export async function createManualConversationMessage(input: { id?: string; phon
   if (updateError) throw new Error(updateError.message);
 
   return readConversations();
+}
+
+export async function updateMessageDeliveryStatus(input: DeliveryStatusInput) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return false;
+
+  const providerMessageId = input.providerMessageId.trim();
+  if (!providerMessageId) return false;
+
+  const now = input.occurredAt ?? new Date().toISOString();
+  const status = input.status.toLowerCase();
+  const timestampUpdates: Record<string, string> = {};
+
+  if (status === "sent" || status === "accepted") timestampUpdates.sent_at = now;
+  if (status === "delivered") timestampUpdates.delivered_at = now;
+  if (status === "read") timestampUpdates.read_at = now;
+
+  const { data: current, error: readError } = await supabase
+    .from("messages")
+    .select("id, metadata")
+    .eq("provider_message_id", providerMessageId)
+    .maybeSingle();
+
+  if (readError || !current?.id) {
+    if (readError && isMissingDeliveryColumn(readError)) return false;
+    if (readError) throw new Error(readError.message);
+    return false;
+  }
+
+  const metadata = (current.metadata ?? {}) as Record<string, unknown>;
+  const { error } = await supabase
+    .from("messages")
+    .update({
+      delivery_status: status,
+      delivery_error: input.error ?? null,
+      metadata: {
+        ...metadata,
+        ycloudDelivery: input.payload ?? null,
+        deliveryUpdatedAt: now
+      },
+      ...timestampUpdates
+    })
+    .eq("id", current.id);
+
+  if (error) {
+    if (isMissingDeliveryColumn(error)) return false;
+    throw new Error(error.message);
+  }
+
+  return true;
 }

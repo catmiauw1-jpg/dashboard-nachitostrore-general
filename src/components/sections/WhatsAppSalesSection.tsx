@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
-import type { Conversation, Order, OrderStatus, PaymentStatus } from "@/types";
+import type { Conversation, ConversationMessage, Order, OrderStatus, PaymentStatus } from "@/types";
 
 interface WhatsAppSalesSectionProps {
   chats: Conversation[];
@@ -53,6 +53,21 @@ function visibleMessageBody(body: string, hasAttachment: boolean) {
   if (!hasAttachment) return body;
   const normalized = body.trim().toLowerCase();
   return normalized === "[image]" || normalized === "[document]" || normalized === "[archivo]" ? "" : body;
+}
+
+function deliveryLabel(message: ConversationMessage) {
+  if (message.direction !== "outbound") return "";
+
+  const labels: Record<string, string> = {
+    local: "local",
+    accepted: "aceptado",
+    sent: "enviado",
+    delivered: "entregado",
+    read: "leido",
+    failed: "fallo"
+  };
+
+  return labels[message.deliveryStatus ?? ""] ?? "";
 }
 
 function normalizePhone(value?: string) {
@@ -470,7 +485,10 @@ export function WhatsAppSalesSection({
                     {visibleMessageBody(message.body, Boolean(message.attachmentUrl)) ? (
                       <p>{visibleMessageBody(message.body, Boolean(message.attachmentUrl))}</p>
                     ) : null}
-                    <small>{formatMessageTime(message.createdAt)}</small>
+                    <small>
+                      {formatMessageTime(message.createdAt)}
+                      {deliveryLabel(message) ? ` · ${deliveryLabel(message)}` : ""}
+                    </small>
                   </article>
                 ))}
 
