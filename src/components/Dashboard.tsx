@@ -302,10 +302,32 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   }, [refreshBusinessData]);
 
   useEffect(() => {
-    const refreshIfVisible = (notifyNewOrders: boolean) => {
-      if (document.visibilityState === "visible") {
-        void refreshBusinessData({ notifyNewOrders });
+    let refreshTimer: number | undefined;
+    let pendingNotifyNewOrders = false;
+
+    const clearScheduledRefresh = () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+        refreshTimer = undefined;
       }
+      pendingNotifyNewOrders = false;
+    };
+
+    const refreshIfVisible = (notifyNewOrders: boolean) => {
+      if (document.visibilityState !== "visible") return;
+
+      pendingNotifyNewOrders = pendingNotifyNewOrders || notifyNewOrders;
+      if (refreshTimer) return;
+
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        const shouldNotifyNewOrders = pendingNotifyNewOrders;
+        pendingNotifyNewOrders = false;
+
+        if (document.visibilityState === "visible") {
+          void refreshBusinessData({ notifyNewOrders: shouldNotifyNewOrders });
+        }
+      }, 250);
     };
 
     const handleVisibilityChange = () => {
@@ -320,6 +342,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
       return () => {
         window.clearInterval(interval);
+        clearScheduledRefresh();
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
     }
@@ -338,6 +361,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
 
     return () => {
       void supabase.removeChannel(channel);
+      clearScheduledRefresh();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refreshBusinessData]);
