@@ -83,6 +83,11 @@ function shortPhone(value?: string) {
   return phone.startsWith("591") ? phone.slice(3) : phone;
 }
 
+function chatSortTime(chat: Conversation) {
+  const time = new Date(chat.lastMessageAt ?? "").getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
 function initials(name: string) {
   return (
     name
@@ -222,21 +227,26 @@ export function WhatsAppSalesSection({
     [activeOrders]
   );
 
+  const sortedChats = useMemo(
+    () => [...chats].sort((left, right) => chatSortTime(right) - chatSortTime(left)),
+    [chats]
+  );
+
   const filteredChats = useMemo(() => {
     const normalizedQuery = chatQuery.trim().toLowerCase();
-    if (!normalizedQuery) return chats;
+    if (!normalizedQuery) return sortedChats;
 
-    return chats.filter((chat) =>
+    return sortedChats.filter((chat) =>
       [chat.name, chat.phone, chat.status, chat.lastMessage]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(normalizedQuery)
     );
-  }, [chatQuery, chats]);
+  }, [chatQuery, sortedChats]);
 
   const selectedChat =
-    chats.find((chat) => conversationKey(chat) === selectedChatKey) ?? filteredChats[0] ?? chats[0];
+    sortedChats.find((chat) => conversationKey(chat) === selectedChatKey) ?? filteredChats[0] ?? sortedChats[0];
 
   const selectedChatIndex = selectedChat
     ? chats.findIndex((chat) => conversationKey(chat) === conversationKey(selectedChat))
@@ -254,7 +264,7 @@ export function WhatsAppSalesSection({
     chatPaymentOrders[0] ??
     null;
 
-  const manualChats = chats.filter((chat) => !chat.bot || chat.alert);
+  const manualChats = sortedChats.filter((chat) => !chat.bot || chat.alert);
   const proofOrders = reviewOrders.filter((order) => hasProof(order) || order.requiresManualReview);
   const waitingProofOrders = reviewOrders.filter((order) => order.payment !== "Pago completo" && !hasProof(order));
 
@@ -266,17 +276,17 @@ export function WhatsAppSalesSection({
   ] as const;
 
   useEffect(() => {
-    if (!selectedChatKey && chats[0]) {
-      setSelectedChatKey(conversationKey(chats[0]));
+    if (!selectedChatKey && sortedChats[0]) {
+      setSelectedChatKey(conversationKey(sortedChats[0]));
     }
-  }, [chats, selectedChatKey]);
+  }, [selectedChatKey, sortedChats]);
 
   useEffect(() => {
     const targetPhone = normalizePhone(focusedPhone);
     const targetShortPhone = shortPhone(focusedPhone);
     if (!targetPhone && !targetShortPhone) return;
 
-    const targetChat = chats.find((chat) => {
+    const targetChat = sortedChats.find((chat) => {
       const chatPhone = normalizePhone(chat.phone);
       const chatShortPhone = shortPhone(chat.phone);
       return (
@@ -289,7 +299,7 @@ export function WhatsAppSalesSection({
       setSelectedChatKey(conversationKey(targetChat));
       setChatQuery("");
     }
-  }, [chats, focusedPhone]);
+  }, [focusedPhone, sortedChats]);
 
   useEffect(() => {
     setSelectedOrderId(chatPaymentOrders[0]?.id ?? null);

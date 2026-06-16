@@ -59,6 +59,15 @@ interface DeliveryStatusInput {
   occurredAt?: string;
 }
 
+interface OrderConversationSyncInput {
+  customerPhone?: string;
+  customerName?: string;
+  orderId: string;
+  orderStatus?: string;
+  paymentStatus?: string;
+  total?: number;
+}
+
 export interface ConversationSendWindow {
   allowed: boolean;
   reason?: "conversation_not_found" | "missing_conversation" | "no_customer_message" | "whatsapp_session_expired";
@@ -259,6 +268,88 @@ export async function updateConversationBot(input: { id?: string; phone?: string
   if (error) throw new Error(error.message);
 
   return readConversations();
+}
+
+function botStageFromOrder(input: OrderConversationSyncInput) {
+  const orderStatus = (input.orderStatus ?? "").toLowerCase();
+  const paymentStatus = (input.paymentStatus ?? "").toLowerCase();
+
+  if (orderStatus.includes("cancel")) return { stage: "nuevo", status: "nuevo", botActive: true, clearPaymentFlow: true };
+  if (orderStatus.includes("entregado")) return { stage: "entregado", status: "entregado", botActive: true, clearPaymentFlow: false };
+  if (orderStatus.includes("lista")) return { stage: "listo", status: "listo", botActive: true, clearPaymentFlow: false };
+  if (orderStatus.includes("prepar")) return { stage: "preparando", status: "preparando", botActive: true, clearPaymentFlow: false };
+  if (paymentStatus.includes("completo")) return { stage: "pago_confirmado", status: "pago_confirmado", botActive: true, clearPaymentFlow: false };
+  if (paymentStatus.includes("50")) return { stage: "pago_confirmado", status: "pago_confirmado", botActive: true, clearPaymentFlow: false };
+
+  return { stage: "esperando_comprobante", status: "esperando_comprobante", botActive: true, clearPaymentFlow: false };
+}
+
+function shouldReplaceConversationName(currentName: string | null, nextName?: string) {
+  const current = (currentName ?? "").trim().toLowerCase();
+  const next = nextName?.trim();
+
+  return Boolean(
+    next &&
+      (!current ||
+        current === "cliente whatsapp" ||
+        current === "cliente web" ||
+        current.includes("prueba"))
+  );
+}
+
+export async function syncConversationFromOrder(input: OrderConversationSyncInput) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return false;
+
+  const phone = normalizePhone(input.customerPhone);
+  if (!phone) return false;
+
+  const { data: conversation, error: readError } = await supabase
+    .from("conversations")
+    .select("id, customer_name, payment_flow")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (readError) throw new Error(readError.message);
+  if (!conversation?.id) return false;
+
+  const now = new Date().toISOString();
+  const syncState = botStageFromOrder(input);
+  const currentPaymentFlow =
+    typeof conversation.payment_flow === "object" && conversation.payment_flow !== null
+      ? conversation.payment_flow as Record<string, unknown>
+      : {};
+  const paymentFlow = syncState.clearPaymentFlow
+    ? {}
+    : {
+        ...currentPaymentFlow,
+        orderId: input.orderId,
+        orderStatus: input.orderStatus,
+        paymentStatus: input.paymentStatus,
+        total: input.total,
+        syncedFromDashboardAt: now
+      };
+
+  const updatePayload: Record<string, unknown> = {
+    status: syncState.status,
+    bot_stage: syncState.stage,
+    bot_active: syncState.botActive,
+    bot_paused_reason: null,
+    payment_flow: paymentFlow,
+    updated_at: now
+  };
+
+  if (shouldReplaceConversationName(conversation.customer_name as string | null, input.customerName)) {
+    updatePayload.customer_name = input.customerName?.trim();
+  }
+
+  const { error: updateError } = await supabase
+    .from("conversations")
+    .update(updatePayload)
+    .eq("id", conversation.id);
+
+  if (updateError) throw new Error(updateError.message);
+  return true;
 }
 
 export async function getConversationSendWindow(input: { id?: string; phone?: string }): Promise<ConversationSendWindow> {

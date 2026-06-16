@@ -1,4 +1,5 @@
 import { adjustStockByColorSize, reserveStockByColorSize } from "@/lib/stockRepository";
+import { syncConversationFromOrder } from "@/lib/conversationRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { upsertCustomerFromOrder } from "@/lib/customerRepository";
 import type {
@@ -460,10 +461,38 @@ export async function updateOrder(orderId: string, updates: Partial<Order>): Pro
     updatePayload.notes = serializeNotesPayload(nextNotes);
   }
 
+  if (updates.status === "Cancelado") {
+    const { error: paymentRequestError } = await supabase
+      .from("payment_requests")
+      .update({
+        status: "canceled",
+        verification_payload: {
+          source: "dashboard",
+          reason: "Pedido cancelado desde dashboard",
+          canceledAt: new Date().toISOString()
+        }
+      })
+      .eq("order_id", (currentRow as OrderRow).id)
+      .in("status", ["pending", "proof_received"]);
+
+    if (paymentRequestError) {
+      console.warn("No se pudo cancelar la solicitud de pago asociada.", paymentRequestError.message);
+    }
+  }
+
   if (Object.keys(updatePayload).length) {
     const { error } = await supabase.from("orders").update(updatePayload).eq("order_number", cleanOrderNumber(orderId));
     if (error) throw new Error(error.message);
   }
+
+  await syncConversationFromOrder({
+    customerPhone: currentOrder.customerPhone,
+    customerName: currentOrder.customer,
+    orderId: currentOrder.id,
+    orderStatus: updates.status ?? currentOrder.status,
+    paymentStatus: updates.payment ?? currentOrder.payment,
+    total: currentOrder.total
+  });
 
   return readOrders();
 }
