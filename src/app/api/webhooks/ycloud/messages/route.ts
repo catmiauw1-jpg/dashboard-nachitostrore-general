@@ -17,6 +17,46 @@ function firstNonEmptyRecord(records: Array<Record<string, unknown>>) {
   return records.find((record) => Object.keys(record).length > 0) ?? {};
 }
 
+function firstArrayRecord(value: unknown) {
+  if (!Array.isArray(value)) return {};
+  return asRecord(value.find((item) => asRecord(item))) ?? {};
+}
+
+function getMessageCandidates(payload: Record<string, unknown>) {
+  const data = getRecord(payload, "data");
+  const payloadBody = getRecord(payload, "payload");
+
+  return [
+    getRecord(payload, "whatsappInboundMessage"),
+    getRecord(data, "whatsappInboundMessage"),
+    getRecord(payloadBody, "whatsappInboundMessage"),
+    getRecord(payload, "whatsappOutboundMessage"),
+    getRecord(data, "whatsappOutboundMessage"),
+    getRecord(payloadBody, "whatsappOutboundMessage"),
+    getRecord(payload, "whatsappMessage"),
+    getRecord(data, "whatsappMessage"),
+    getRecord(payloadBody, "whatsappMessage"),
+    getRecord(payload, "whatsappMessageUpdated"),
+    getRecord(data, "whatsappMessageUpdated"),
+    getRecord(payloadBody, "whatsappMessageUpdated"),
+    getRecord(payload, "message"),
+    getRecord(data, "message"),
+    getRecord(payloadBody, "message"),
+    firstArrayRecord(payload.whatsappInboundMessages),
+    firstArrayRecord(data.whatsappInboundMessages),
+    firstArrayRecord(payloadBody.whatsappInboundMessages),
+    firstArrayRecord(payload.whatsappMessages),
+    firstArrayRecord(data.whatsappMessages),
+    firstArrayRecord(payloadBody.whatsappMessages),
+    firstArrayRecord(payload.messages),
+    firstArrayRecord(data.messages),
+    firstArrayRecord(payloadBody.messages),
+    data,
+    payloadBody,
+    payload
+  ];
+}
+
 function firstString(source: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = source[key];
@@ -33,6 +73,11 @@ function normalizePhone(value: unknown) {
 function deepString(source: unknown, path: string[]) {
   let current = source;
   for (const key of path) {
+    if (Array.isArray(current) && /^\d+$/.test(key)) {
+      current = current[Number(key)];
+      continue;
+    }
+
     const record = asRecord(current);
     if (!record) return "";
     current = record[key];
@@ -62,14 +107,7 @@ function normalizeDeliveryStatus(value: string) {
 
 function extractMessagePayload(payload: Record<string, unknown>) {
   const data = getRecord(payload, "data");
-  const payloadBody = getRecord(payload, "payload");
-  const message = firstNonEmptyRecord([
-    getRecord(payload, "message"),
-    getRecord(data, "message"),
-    getRecord(payloadBody, "message"),
-    data,
-    payload
-  ]);
+  const message = firstNonEmptyRecord(getMessageCandidates(payload));
 
   const messageId =
     firstString(message, ["id", "messageId", "message_id", "wamid", "whatsappMessageId"]) ||
@@ -106,13 +144,31 @@ function textFromRecord(record: Record<string, unknown>) {
   const textRecord = asRecord(text);
   return (
     firstString(textRecord ?? {}, ["body", "text", "content", "caption"]) ||
-    firstString(record, ["body", "content", "caption", "messageText"])
+    firstString(record, ["body", "content", "caption", "messageText", "textBody"])
   );
 }
 
 function extractAttachment(message: Record<string, unknown>, payload: Record<string, unknown>) {
-  const image = asRecord(message.image) ?? asRecord(firstDeepRecord(payload, [["data", "image"], ["payload", "image"]]));
-  const document = asRecord(message.document) ?? asRecord(firstDeepRecord(payload, [["data", "document"], ["payload", "document"]]));
+  const image = asRecord(message.image) ?? asRecord(firstDeepRecord(payload, [
+    ["whatsappInboundMessage", "image"],
+    ["whatsappMessage", "image"],
+    ["data", "whatsappInboundMessage", "image"],
+    ["data", "whatsappMessage", "image"],
+    ["payload", "whatsappInboundMessage", "image"],
+    ["payload", "whatsappMessage", "image"],
+    ["data", "image"],
+    ["payload", "image"]
+  ]));
+  const document = asRecord(message.document) ?? asRecord(firstDeepRecord(payload, [
+    ["whatsappInboundMessage", "document"],
+    ["whatsappMessage", "document"],
+    ["data", "whatsappInboundMessage", "document"],
+    ["data", "whatsappMessage", "document"],
+    ["payload", "whatsappInboundMessage", "document"],
+    ["payload", "whatsappMessage", "document"],
+    ["data", "document"],
+    ["payload", "document"]
+  ]));
   const attachments = Array.isArray(message.attachments)
     ? message.attachments
     : Array.isArray(payload.attachments)
@@ -172,20 +228,20 @@ function boolFromRecord(source: Record<string, unknown>, keys: string[]) {
 function extractSyncMessage(payload: Record<string, unknown>) {
   const data = getRecord(payload, "data");
   const payloadBody = getRecord(payload, "payload");
-  const message = firstNonEmptyRecord([
-    getRecord(payload, "message"),
-    getRecord(data, "message"),
-    getRecord(payloadBody, "message"),
-    getRecord(payload, "whatsappMessage"),
-    getRecord(data, "whatsappMessage"),
-    data,
-    payload
-  ]);
+  const message = firstNonEmptyRecord(getMessageCandidates(payload));
 
-  const event = firstString(payload, ["event", "type", "eventType"]).toLowerCase();
+  const event = (
+    firstString(payload, ["event", "type", "eventType"]) ||
+    firstString(data, ["event", "type", "eventType"]) ||
+    firstString(payloadBody, ["event", "type", "eventType"])
+  ).toLowerCase();
   const text =
     textFromRecord(message) ||
     firstDeepString(payload, [
+      ["whatsappInboundMessage", "text", "body"],
+      ["whatsappMessage", "text", "body"],
+      ["data", "whatsappInboundMessage", "text", "body"],
+      ["data", "whatsappMessage", "text", "body"],
       ["data", "text", "body"],
       ["payload", "text", "body"],
       ["text", "body"]
@@ -204,12 +260,26 @@ function extractSyncMessage(payload: Record<string, unknown>) {
   const from = normalizePhone(
     firstString(message, ["from", "fromNumber", "sender", "wa_id"]) ||
       firstString(data, ["from", "fromNumber", "sender", "wa_id"]) ||
-      firstString(payload, ["from", "fromNumber", "sender", "wa_id"])
+      firstString(payload, ["from", "fromNumber", "sender", "wa_id"]) ||
+      firstDeepString(payload, [
+        ["sender", "phone"],
+        ["sender", "phoneNumber"],
+        ["data", "sender", "phone"],
+        ["data", "sender", "phoneNumber"],
+        ["contact", "wa_id"],
+        ["contacts", "0", "wa_id"]
+      ])
   );
   const to = normalizePhone(
     firstString(message, ["to", "toNumber", "recipient"]) ||
       firstString(data, ["to", "toNumber", "recipient"]) ||
-      firstString(payload, ["to", "toNumber", "recipient"])
+      firstString(payload, ["to", "toNumber", "recipient"]) ||
+      firstDeepString(payload, [
+        ["recipient", "phone"],
+        ["recipient", "phoneNumber"],
+        ["data", "recipient", "phone"],
+        ["data", "recipient", "phoneNumber"]
+      ])
   );
   const businessPhone = normalizePhone(process.env.YCLOUD_WHATSAPP_FROM || "59178096231");
   const fromMe =
@@ -217,7 +287,11 @@ function extractSyncMessage(payload: Record<string, unknown>) {
     boolFromRecord(data, ["fromMe", "isFromMe", "isEcho"]) ||
     boolFromRecord(payload, ["fromMe", "isFromMe", "isEcho"]);
   const direction =
-    fromMe || directionValue === "outbound" || directionValue === "outgoing" || (businessPhone && from === businessPhone)
+    fromMe ||
+    directionValue === "outbound" ||
+    directionValue === "outgoing" ||
+    event.includes("message_echoes") ||
+    (businessPhone && from === businessPhone)
       ? "outbound"
       : "inbound";
   const phone =
@@ -226,6 +300,12 @@ function extractSyncMessage(payload: Record<string, unknown>) {
       : from || normalizePhone(firstDeepString(payload, [["contact", "phone"], ["data", "contact", "phone"], ["payload", "contact", "phone"]]));
   const customerName =
     firstDeepString(payload, [
+      ["whatsappInboundMessage", "profile", "name"],
+      ["whatsappMessage", "profile", "name"],
+      ["data", "whatsappInboundMessage", "profile", "name"],
+      ["data", "whatsappMessage", "profile", "name"],
+      ["contacts", "0", "profile", "name"],
+      ["data", "contacts", "0", "profile", "name"],
       ["contact", "name"],
       ["contact", "profile", "name"],
       ["data", "contact", "name"],
@@ -233,9 +313,9 @@ function extractSyncMessage(payload: Record<string, unknown>) {
       ["payload", "contact", "name"]
     ]) || "Cliente WhatsApp";
   const createdAt =
-    firstString(message, ["timestamp", "createdAt", "sentAt"]) ||
-    firstString(data, ["timestamp", "createdAt", "sentAt"]) ||
-    firstString(payload, ["timestamp", "createdAt", "sentAt"]) ||
+    firstString(message, ["timestamp", "createdAt", "sentAt", "sendTime", "receiveTime", "createTime"]) ||
+    firstString(data, ["timestamp", "createdAt", "sentAt", "sendTime", "receiveTime", "createTime"]) ||
+    firstString(payload, ["timestamp", "createdAt", "sentAt", "sendTime", "receiveTime", "createTime"]) ||
     undefined;
 
   const hasContent = Boolean(text || attachment.url || attachment.mediaId);
@@ -244,6 +324,7 @@ function extractSyncMessage(payload: Record<string, unknown>) {
     event.includes("outbound") ||
     event.includes("history") ||
     event.includes("state.sync") ||
+    event.includes("message_echoes") ||
     event.includes("message.received") ||
     event.includes("message.created") ||
     event.includes("message.updated") ||
@@ -308,6 +389,9 @@ function shouldTriggerBot(
   const normalizedEvent = event.toLowerCase();
   if (message.direction !== "inbound") return false;
   if (normalizedEvent.includes("message.updated")) return false;
+  if (normalizedEvent.includes("message_echoes")) return false;
+  if (normalizedEvent.includes("history")) return false;
+  if (normalizedEvent.includes("state.sync")) return false;
   if (normalizedEvent.includes("status")) return false;
   return true;
 }
@@ -414,6 +498,12 @@ export async function POST(request: Request) {
 
     const event = firstString(payload, ["event", "type", "eventType"]);
     const syncedMessage = extractSyncMessage(payload);
+    if (!syncedMessage) {
+      console.warn("YCloud webhook ignored: no syncable message.", {
+        event,
+        keys: Object.keys(payload).slice(0, 20)
+      });
+    }
     const insertedMessage = syncedMessage
       ? await createSyncedProviderMessage({
           ...syncedMessage,
