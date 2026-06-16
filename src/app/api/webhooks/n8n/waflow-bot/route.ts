@@ -245,7 +245,7 @@ interface WaflowPayload {
 }
 
 function webhookSecret() {
-  return process.env.N8N_WEBHOOK_SECRET;
+  return process.env.N8N_WEBHOOK_SECRET || process.env.POLERAFLOW_WEBHOOK_SECRET;
 }
 
 function hasValidSecret(request: Request) {

@@ -332,7 +332,7 @@ function getBotQrUrl(bot: BotWebhookResponse) {
 }
 
 async function runBotAndSendReplies(request: Request, payload: Record<string, unknown>, phone: string) {
-  const secret = process.env.N8N_WEBHOOK_SECRET;
+  const secret = process.env.N8N_WEBHOOK_SECRET || process.env.POLERAFLOW_WEBHOOK_SECRET;
   if (!secret) return { skipped: true, reason: "missing_n8n_webhook_secret" };
 
   const botUrl = new URL("/api/webhooks/n8n/waflow-bot", request.url);
