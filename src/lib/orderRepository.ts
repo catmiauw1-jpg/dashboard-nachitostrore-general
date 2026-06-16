@@ -1,5 +1,6 @@
 import { adjustStockByColorSize, reserveStockByColorSize } from "@/lib/stockRepository";
 import { syncConversationFromOrder } from "@/lib/conversationRepository";
+import { notifyCustomerOrderStatus } from "@/lib/orderStatusNotifications";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 import { upsertCustomerFromOrder } from "@/lib/customerRepository";
 import type {
@@ -399,7 +400,11 @@ export async function createOrder(order: Order): Promise<Order[]> {
   return readOrders();
 }
 
-export async function updateOrder(orderId: string, updates: Partial<Order>): Promise<Order[]> {
+export async function updateOrder(
+  orderId: string,
+  updates: Partial<Order>,
+  options: { notifyCustomer?: boolean } = {}
+): Promise<Order[]> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return [];
 
@@ -493,6 +498,20 @@ export async function updateOrder(orderId: string, updates: Partial<Order>): Pro
     paymentStatus: updates.payment ?? currentOrder.payment,
     total: currentOrder.total
   });
+
+  if (options.notifyCustomer && updates.status && updates.status !== currentOrder.status) {
+    await notifyCustomerOrderStatus(
+      {
+        ...currentOrder,
+        ...updates,
+        status: updates.status,
+        payment: updates.payment ?? currentOrder.payment,
+        deliveryArea: updates.deliveryArea ?? nextNotes.deliveryArea,
+        deliveryDepartment: updates.deliveryDepartment ?? nextNotes.deliveryDepartment
+      },
+      updates.status
+    );
+  }
 
   return readOrders();
 }

@@ -326,7 +326,7 @@ export async function PATCH(request: Request) {
     await requireAdminRequest(request);
 
     const body = (await request.json()) as { id: string; updates: Partial<Order> };
-    const orders = await updateOrder(body.id, body.updates);
+    const orders = await updateOrder(body.id, body.updates, { notifyCustomer: true });
 
     return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
   } catch (error) {

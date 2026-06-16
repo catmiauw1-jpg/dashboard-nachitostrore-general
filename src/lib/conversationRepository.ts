@@ -32,9 +32,13 @@ interface ManualMessageInput {
   id?: string;
   phone?: string;
   body: string;
+  source?: string;
+  author?: string;
   providerMessageId?: string;
   deliveryStatus?: string;
+  deliveryError?: string;
   deliveryPayload?: Record<string, unknown>;
+  touchConversation?: boolean;
 }
 
 interface SyncedProviderMessageInput {
@@ -435,7 +439,7 @@ export async function createManualConversationMessage(input: ManualMessageInput)
   const now = new Date().toISOString();
   const metadata = {
     tipo: "manual",
-    autor: "tienda",
+    autor: input.author ?? "tienda",
     timestamp: now,
     provider: input.providerMessageId ? "ycloud" : "local",
     ycloud: input.deliveryPayload ?? null
@@ -445,10 +449,11 @@ export async function createManualConversationMessage(input: ManualMessageInput)
     conversation_id: conversation.id,
     direction: "outbound",
     body,
-    source: "manual",
+    source: input.source ?? "manual",
     metadata,
     provider_message_id: input.providerMessageId ?? null,
     delivery_status: input.deliveryStatus ?? (input.providerMessageId ? "sent" : "local"),
+    delivery_error: input.deliveryError ?? null,
     sent_at: input.providerMessageId ? now : null
   };
 
@@ -468,13 +473,16 @@ export async function createManualConversationMessage(input: ManualMessageInput)
 
   if (messageError) throw new Error(messageError.message);
 
-  const { error: updateError } = await supabase
-    .from("conversations")
-    .update({
-      last_message_at: now,
-      updated_at: now
-    })
-    .eq("id", conversation.id);
+  const shouldTouchConversation = input.touchConversation !== false;
+  const { error: updateError } = shouldTouchConversation
+    ? await supabase
+        .from("conversations")
+        .update({
+          last_message_at: now,
+          updated_at: now
+        })
+        .eq("id", conversation.id)
+    : { error: null };
 
   if (updateError) throw new Error(updateError.message);
 

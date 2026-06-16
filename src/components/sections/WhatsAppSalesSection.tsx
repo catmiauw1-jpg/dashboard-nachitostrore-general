@@ -164,12 +164,16 @@ function proofRequestTemplate(order?: Order) {
   ].join("\n");
 }
 
-function conversationBadges(chat: Conversation) {
+function conversationBadges(chat: Conversation, hasPendingPaymentOrder: boolean) {
   const status = `${chat.status} ${chat.stage ?? ""}`.toLowerCase();
   const badges: Array<{ label: string; tone: string }> = [];
+  const manualStage = status.includes("manual") || status.includes("atencion");
+  const paymentStage = status.includes("comprobante") || status.includes("pago") || status.includes("falta");
 
-  if (chat.alert || !chat.bot) badges.push({ label: "Atencion", tone: "warning" });
-  if (status.includes("comprobante") || status.includes("pago") || status.includes("falta")) {
+  if (!chat.bot || manualStage || (chat.alert && hasPendingPaymentOrder)) {
+    badges.push({ label: "Atencion", tone: "warning" });
+  }
+  if (hasPendingPaymentOrder && paymentStage) {
     badges.push({ label: "Pago pendiente", tone: "danger" });
   }
   if (chat.bot) badges.push({ label: "Bot", tone: "success" });
@@ -421,7 +425,8 @@ export function WhatsAppSalesSection({
           <div className="whatsapp-console-list">
             {filteredChats.map((chat) => {
               const isActive = conversationKey(chat) === conversationKey(selectedChat);
-              const badges = conversationBadges(chat);
+              const hasPendingPaymentOrder = reviewOrders.some((order) => isSameClient(order, chat));
+              const badges = conversationBadges(chat, hasPendingPaymentOrder);
 
               return (
                 <button
