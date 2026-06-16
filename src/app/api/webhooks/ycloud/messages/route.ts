@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
 import { createSyncedProviderMessage, updateMessageDeliveryStatus } from "@/lib/conversationRepository";
 import { assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
 import { sendYCloudImageMessage, sendYCloudTextMessage } from "@/lib/ycloud";
@@ -350,9 +351,78 @@ function extractSyncMessage(payload: Record<string, unknown>) {
   };
 }
 
-function isAuthorized(request: Request) {
-  const secret = process.env.YCLOUD_WEBHOOK_SECRET;
-  if (!secret) return true;
+function safeCompare(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function parseSignatureValues(value: string) {
+  return value
+    .split(/\s+/)
+    .flatMap((chunk) => chunk.split(","))
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.replace(/^v\d+=?/i, "").replace(/^sha256=/i, ""));
+}
+
+function standardWebhookSecret(secret: string) {
+  if (!secret.startsWith("whsec_")) return Buffer.from(secret);
+  try {
+    return Buffer.from(secret.replace(/^whsec_/, ""), "base64");
+  } catch {
+    return Buffer.from(secret);
+  }
+}
+
+function hasStandardWebhookSignature(request: Request, rawBody: string, secret: string) {
+  const id =
+    request.headers.get("webhook-id") ||
+    request.headers.get("svix-id") ||
+    request.headers.get("x-webhook-id");
+  const timestamp =
+    request.headers.get("webhook-timestamp") ||
+    request.headers.get("svix-timestamp") ||
+    request.headers.get("x-webhook-timestamp");
+  const signature =
+    request.headers.get("webhook-signature") ||
+    request.headers.get("svix-signature") ||
+    request.headers.get("x-webhook-signature");
+
+  if (!id || !timestamp || !signature) return false;
+
+  const signedPayload = `${id}.${timestamp}.${rawBody}`;
+  const expected = createHmac("sha256", standardWebhookSecret(secret))
+    .update(signedPayload)
+    .digest("base64");
+
+  return parseSignatureValues(signature).some((candidate) => safeCompare(candidate, expected));
+}
+
+function hasRawBodySignature(request: Request, rawBody: string, secret: string) {
+  const signature =
+    request.headers.get("x-yc-signature") ||
+    request.headers.get("x-ycloud-signature") ||
+    request.headers.get("x-signature-256") ||
+    request.headers.get("x-hub-signature-256") ||
+    request.headers.get("x-signature");
+
+  if (!signature) return false;
+
+  const expectedHex = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const expectedBase64 = createHmac("sha256", secret).update(rawBody).digest("base64");
+
+  return parseSignatureValues(signature).some(
+    (candidate) => safeCompare(candidate, expectedHex) || safeCompare(candidate, expectedBase64)
+  );
+}
+
+function isAuthorized(request: Request, rawBody: string) {
+  const ycloudSecret = process.env.YCLOUD_WEBHOOK_SECRET?.trim();
+  const internalSecrets = [
+    process.env.POLERAFLOW_WEBHOOK_SECRET,
+    process.env.N8N_WEBHOOK_SECRET
+  ].filter((value): value is string => Boolean(value?.trim()));
 
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const directSecret =
@@ -360,7 +430,18 @@ function isAuthorized(request: Request) {
     request.headers.get("x-ycloud-webhook-secret") ||
     request.headers.get("x-webhook-secret");
 
-  return bearer === secret || directSecret === secret;
+  if (internalSecrets.some((secret) => bearer === secret || directSecret === secret)) {
+    return true;
+  }
+
+  if (!ycloudSecret) return true;
+
+  return (
+    bearer === ycloudSecret ||
+    directSecret === ycloudSecret ||
+    hasStandardWebhookSignature(request, rawBody, ycloudSecret) ||
+    hasRawBodySignature(request, rawBody, ycloudSecret)
+  );
 }
 
 type BotWebhookResponse = {
@@ -480,15 +561,27 @@ export async function OPTIONS(request: Request) {
 export async function POST(request: Request) {
   try {
     assertBodySize(request, 256_000);
+    const rawBody = await request.text();
 
-    if (!isAuthorized(request)) {
+    if (!isAuthorized(request, rawBody)) {
+      console.warn("YCloud webhook unauthorized.", {
+        hasYCloudSecret: Boolean(process.env.YCLOUD_WEBHOOK_SECRET),
+        hasWebhookId: Boolean(request.headers.get("webhook-id") || request.headers.get("svix-id")),
+        hasWebhookSignature: Boolean(request.headers.get("webhook-signature") || request.headers.get("svix-signature")),
+        hasDirectSecret: Boolean(
+          request.headers.get("authorization") ||
+          request.headers.get("x-poleraflow-webhook-secret") ||
+          request.headers.get("x-ycloud-webhook-secret") ||
+          request.headers.get("x-webhook-secret")
+        )
+      });
       return NextResponse.json(
         { error: "Webhook no autorizado." },
         { status: 401, headers: secureJsonHeaders(request) }
       );
     }
 
-    const payload = asRecord(await request.json().catch(() => null));
+    const payload = asRecord(JSON.parse(rawBody || "{}"));
     if (!payload) {
       return NextResponse.json(
         { error: "Payload invalido." },
