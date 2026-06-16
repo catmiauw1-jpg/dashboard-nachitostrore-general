@@ -37,6 +37,20 @@ interface ManualMessageInput {
   deliveryPayload?: Record<string, unknown>;
 }
 
+interface SyncedProviderMessageInput {
+  phone: string;
+  customerName?: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  source: string;
+  providerMessageId?: string;
+  deliveryStatus?: string;
+  metadata?: Record<string, unknown>;
+  attachmentUrl?: string;
+  attachmentType?: string;
+  createdAt?: string;
+}
+
 interface DeliveryStatusInput {
   providerMessageId: string;
   status: string;
@@ -308,6 +322,104 @@ export async function createManualConversationMessage(input: ManualMessageInput)
   if (updateError) throw new Error(updateError.message);
 
   return readConversations();
+}
+
+export async function createSyncedProviderMessage(input: SyncedProviderMessageInput) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return false;
+
+  const phone = normalizePhone(input.phone);
+  if (!phone) throw new Error("Telefono requerido.");
+
+  const body = input.body.trim().slice(0, 2000) || `[${input.attachmentType || "mensaje"}]`;
+  const now = input.createdAt ?? new Date().toISOString();
+  const providerMessageId = input.providerMessageId?.trim() || undefined;
+
+  if (providerMessageId) {
+    const { data: existing, error: existingError } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("provider_message_id", providerMessageId)
+      .maybeSingle();
+
+    if (existingError && !isMissingDeliveryColumn(existingError)) {
+      throw new Error(existingError.message);
+    }
+
+    if (existing?.id) return false;
+  }
+
+  const { data: existingConversation, error: readConversationError } = await supabase
+    .from("conversations")
+    .select("id, customer_name")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (readConversationError) throw new Error(readConversationError.message);
+
+  let conversationId = existingConversation?.id as string | undefined;
+  if (!conversationId) {
+    const { data: createdConversation, error: createConversationError } = await supabase
+      .from("conversations")
+      .insert({
+        customer_name: input.customerName?.trim() || "Cliente WhatsApp",
+        phone,
+        bot_active: true,
+        status: "nuevo",
+        bot_stage: "nuevo",
+        last_message_at: now
+      })
+      .select("id")
+      .single();
+
+    if (createConversationError) throw new Error(createConversationError.message);
+    conversationId = createdConversation.id as string;
+  }
+
+  const metadata = {
+    ...(input.metadata ?? {}),
+    provider: "ycloud",
+    attachmentUrl: input.attachmentUrl,
+    attachmentType: input.attachmentType
+  };
+
+  const insertPayload = {
+    conversation_id: conversationId,
+    direction: input.direction,
+    body,
+    source: input.source,
+    metadata,
+    provider_message_id: providerMessageId ?? null,
+    delivery_status: input.deliveryStatus ?? (input.direction === "outbound" ? "sent" : "local"),
+    sent_at: input.direction === "outbound" ? now : null
+  };
+
+  let { error: messageError } = await supabase.from("messages").insert(insertPayload);
+
+  if (messageError && isMissingDeliveryColumn(messageError)) {
+    const legacyInsert = await supabase.from("messages").insert({
+      conversation_id: insertPayload.conversation_id,
+      direction: insertPayload.direction,
+      body: insertPayload.body,
+      source: insertPayload.source,
+      metadata: insertPayload.metadata
+    });
+    messageError = legacyInsert.error;
+  }
+
+  if (messageError) throw new Error(messageError.message);
+
+  const { error: updateError } = await supabase
+    .from("conversations")
+    .update({
+      customer_name: existingConversation?.customer_name || input.customerName || "Cliente WhatsApp",
+      last_message_at: now,
+      updated_at: now
+    })
+    .eq("id", conversationId);
+
+  if (updateError) throw new Error(updateError.message);
+  return true;
 }
 
 export async function updateMessageDeliveryStatus(input: DeliveryStatusInput) {

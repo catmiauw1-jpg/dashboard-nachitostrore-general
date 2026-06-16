@@ -190,7 +190,7 @@ export async function POST(request: Request) {
       phone: body.phone,
       body: cleanMessage,
       providerMessageId: sendStatus.providerMessageId,
-      deliveryStatus: sendStatus.providerMessageId ? "sent" : "accepted",
+      deliveryStatus: "accepted",
       deliveryPayload: sendStatus.response
     });
 
