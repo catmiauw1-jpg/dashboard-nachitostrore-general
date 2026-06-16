@@ -240,10 +240,13 @@ function extractSyncMessage(payload: Record<string, unknown>) {
   const hasContent = Boolean(text || attachment.url || attachment.mediaId);
   const isMessageEvent =
     event.includes("inbound") ||
+    event.includes("outbound") ||
     event.includes("history") ||
     event.includes("state.sync") ||
     event.includes("message.received") ||
-    event.includes("message.created");
+    event.includes("message.created") ||
+    event.includes("message.updated") ||
+    (!event && hasContent);
 
   if (!hasContent || !phone || !isMessageEvent) return null;
 

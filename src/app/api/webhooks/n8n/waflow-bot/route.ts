@@ -1232,11 +1232,15 @@ async function buildSmartAgentReply(params: {
 }
 
 function splitReplyMessages(replyText: string) {
-  if (/^(\u00A1Hola!|\uD83D\uDCCB \*Pedido nuevo:\*|\u2705 Pedido confirmado|\uD83D\uDCCE Comprobante recibido|Pedido nuevo:|\u23F3 En revisi\u00F3n|Perfecto\.)/.test(replyText.trim())) {
-    return [replyText.trim()];
+  const trimmed = replyText.trim();
+  if (
+    trimmed.includes(nachitoStoreUrl) ||
+    /^(Hola!|\u00A1Hola!|\uD83D\uDCCB \*Pedido nuevo:\*|\u2705 Pedido confirmado|\uD83D\uDCCE Comprobante recibido|Pedido nuevo:|\u23F3 En revisi\u00F3n|Perfecto\.)/.test(trimmed)
+  ) {
+    return [trimmed];
   }
 
-  return replyText
+  return trimmed
     .split(/\n{2,}/)
     .map((message) => message.trim())
     .filter(Boolean)
