@@ -94,6 +94,63 @@ export async function sendYCloudTextMessage(phone: string | undefined, message: 
   };
 }
 
+export async function sendYCloudImageMessage(
+  phone: string | undefined,
+  imageUrl: string,
+  caption?: string
+): Promise<YCloudSendStatus> {
+  const apiKey = process.env.YCLOUD_API_KEY;
+  const from = normalizeYCloudPhone(process.env.YCLOUD_WHATSAPP_FROM || "59178096231");
+  const to = normalizeYCloudPhone(phone);
+  const link = imageUrl.trim();
+
+  if (!apiKey || !from) {
+    return { sent: false, reason: "missing_ycloud_config" };
+  }
+
+  if (!to) {
+    return { sent: false, reason: "missing_phone" };
+  }
+
+  if (!link) {
+    return { sent: false, reason: "ycloud_error", detail: "Falta URL de imagen." };
+  }
+
+  const response = await fetch("https://api.ycloud.com/v2/whatsapp/messages/sendDirectly", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      type: "image",
+      image: {
+        link,
+        ...(caption ? { caption } : {})
+      }
+    })
+  });
+
+  const payload = asRecord(await response.json().catch(() => null)) ?? undefined;
+
+  if (!response.ok) {
+    return {
+      sent: false,
+      reason: "ycloud_error",
+      detail: JSON.stringify(payload ?? {}).slice(0, 240) || response.statusText,
+      response: payload
+    };
+  }
+
+  return {
+    sent: true,
+    providerMessageId: extractYCloudMessageId(payload),
+    response: payload
+  };
+}
+
 export function manualSendError(status: YCloudSendStatus) {
   if (status.sent) return { statusCode: 200, message: "" };
 

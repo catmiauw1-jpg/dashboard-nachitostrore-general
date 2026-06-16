@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSyncedProviderMessage, updateMessageDeliveryStatus } from "@/lib/conversationRepository";
 import { assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
+import { sendYCloudImageMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -281,6 +282,113 @@ function isAuthorized(request: Request) {
   return bearer === secret || directSecret === secret;
 }
 
+type BotWebhookResponse = {
+  ok?: boolean;
+  replyText?: string;
+  replyMessages?: string[];
+  replyTargetPhone?: string;
+  sendPaymentQr?: boolean;
+  payment_flow?: {
+    qrUrl?: string | null;
+  };
+  paymentFlow?: {
+    qrUrl?: string | null;
+  };
+  paymentQrUrl?: string | null;
+  duplicate?: boolean;
+  error?: string;
+};
+
+function shouldTriggerBot(
+  event: string,
+  message: ReturnType<typeof extractSyncMessage> | null,
+  insertedMessage: boolean
+) {
+  if (!insertedMessage || !message) return false;
+  const normalizedEvent = event.toLowerCase();
+  if (message.direction !== "inbound") return false;
+  if (normalizedEvent.includes("message.updated")) return false;
+  if (normalizedEvent.includes("status")) return false;
+  return true;
+}
+
+function getBotReplyMessages(bot: BotWebhookResponse) {
+  if (Array.isArray(bot.replyMessages)) {
+    return bot.replyMessages.map((message) => cleanText(message, 1800)).filter(Boolean);
+  }
+
+  const fallback = cleanText(bot.replyText, 1800);
+  return fallback ? [fallback] : [];
+}
+
+function getBotQrUrl(bot: BotWebhookResponse) {
+  if (!bot.sendPaymentQr) return "";
+  return (
+    bot.payment_flow?.qrUrl ||
+    bot.paymentFlow?.qrUrl ||
+    bot.paymentQrUrl ||
+    ""
+  );
+}
+
+async function runBotAndSendReplies(request: Request, payload: Record<string, unknown>, phone: string) {
+  const secret = process.env.N8N_WEBHOOK_SECRET;
+  if (!secret) return { skipped: true, reason: "missing_n8n_webhook_secret" };
+
+  const botUrl = new URL("/api/webhooks/n8n/waflow-bot", request.url);
+  const response = await fetch(botUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-poleraflow-webhook-secret": secret,
+      "x-poleraflow-skip-incoming-log": "1"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const bot = (await response.json().catch(() => null)) as BotWebhookResponse | null;
+  if (!response.ok || !bot?.ok || bot.duplicate) {
+    return {
+      ok: Boolean(bot?.ok),
+      skipped: true,
+      reason: bot?.duplicate ? "duplicate_bot_event" : bot?.error || response.statusText
+    };
+  }
+
+  const messages = getBotReplyMessages(bot);
+  const deliveries = [];
+
+  for (const message of messages) {
+    const delivery = await sendYCloudTextMessage(bot.replyTargetPhone || phone, message);
+    deliveries.push({
+      type: "text",
+      sent: delivery.sent,
+      providerMessageId: delivery.sent ? delivery.providerMessageId : undefined,
+      reason: delivery.sent ? undefined : delivery.reason,
+      detail: delivery.sent ? undefined : delivery.detail
+    });
+  }
+
+  const qrUrl = getBotQrUrl(bot);
+  if (qrUrl) {
+    const delivery = await sendYCloudImageMessage(bot.replyTargetPhone || phone, qrUrl, "QR de pago Nachito Store");
+    deliveries.push({
+      type: "image",
+      sent: delivery.sent,
+      providerMessageId: delivery.sent ? delivery.providerMessageId : undefined,
+      reason: delivery.sent ? undefined : delivery.reason,
+      detail: delivery.sent ? undefined : delivery.detail
+    });
+  }
+
+  return {
+    ok: true,
+    sent: deliveries.filter((delivery) => delivery.sent).length,
+    failed: deliveries.filter((delivery) => !delivery.sent).length,
+    deliveries
+  };
+}
+
 export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: secureJsonHeaders(request) });
 }
@@ -312,12 +420,16 @@ export async function POST(request: Request) {
           source: "ycloud"
         })
       : false;
+    const shouldRunBot = shouldTriggerBot(event, syncedMessage, insertedMessage);
+    const botResult = shouldRunBot && syncedMessage
+      ? await runBotAndSendReplies(request, payload, syncedMessage.phone)
+      : { skipped: true, reason: "not_inbound_new_message" };
 
     const message = extractMessagePayload(payload);
 
     if (!message.messageId || !message.status) {
       return NextResponse.json(
-        { ok: true, insertedMessage, ignored: !insertedMessage, reason: "missing_message_status", event },
+        { ok: true, insertedMessage, ignored: !insertedMessage, reason: "missing_message_status", event, bot: botResult },
         { headers: secureJsonHeaders(request) }
       );
     }
@@ -331,7 +443,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { ok: true, updated, insertedMessage, messageId: message.messageId, status: message.status },
+      { ok: true, updated, insertedMessage, messageId: message.messageId, status: message.status, bot: botResult },
       { headers: secureJsonHeaders(request) }
     );
   } catch (error) {

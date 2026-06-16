@@ -1875,6 +1875,7 @@ async function nextBotStateV2(
 export async function POST(request: Request) {
   try {
     assertBodySize(request, maxBotBodyBytes);
+    const skipIncomingMessageInsert = request.headers.get("x-poleraflow-skip-incoming-log") === "1";
 
     if (!webhookSecret()) {
       throw new RequestSecurityError("N8N_WEBHOOK_SECRET no esta configurado.", 503);
@@ -1957,13 +1958,15 @@ export async function POST(request: Request) {
       conversation = createdConversation;
     }
 
-    await supabase.from("messages").insert({
-      conversation_id: conversation.id,
-      direction: fromMe ? "outbound" : "inbound",
-      body: inboundBody,
-      source: "waflow",
-      metadata: { raw: payload, attachmentUrl, attachmentDetails }
-    });
+    if (!skipIncomingMessageInsert) {
+      await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        direction: fromMe ? "outbound" : "inbound",
+        body: inboundBody,
+        source: "waflow",
+        metadata: { raw: payload, attachmentUrl, attachmentDetails }
+      });
+    }
 
     if (!botGlobalActive || !conversation.bot_active || fromMe) {
       return NextResponse.json(
