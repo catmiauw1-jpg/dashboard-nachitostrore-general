@@ -60,7 +60,7 @@ function deliveryLabel(message: ConversationMessage) {
 
   const labels: Record<string, string> = {
     local: "local",
-    accepted: "aceptado",
+    accepted: "pendiente",
     sent: "enviado",
     delivered: "entregado",
     read: "leido",

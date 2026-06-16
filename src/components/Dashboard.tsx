@@ -451,7 +451,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     setChats(nextChats);
 
     if (!Array.isArray(payload) && payload.sendStatus?.sent) {
-      showToast("Mensaje enviado por WhatsApp.");
+      showToast("Mensaje aceptado por YCloud. Esperando entrega de WhatsApp.");
     } else if (!Array.isArray(payload) && payload.sendStatus?.reason === "missing_ycloud_config") {
       showToast("Mensaje guardado. Falta configurar YCloud para enviarlo.");
     } else if (!Array.isArray(payload) && payload.sendStatus?.reason) {

@@ -59,6 +59,14 @@ interface DeliveryStatusInput {
   occurredAt?: string;
 }
 
+export interface ConversationSendWindow {
+  allowed: boolean;
+  reason?: "conversation_not_found" | "missing_conversation" | "no_customer_message" | "whatsapp_session_expired";
+  conversationId?: string;
+  lastInboundAt?: string;
+  hoursSinceLastInbound?: number;
+}
+
 function normalizePhone(value: unknown) {
   return typeof value === "string" ? value.replace(/\D/g, "").slice(0, 24) : "";
 }
@@ -251,6 +259,64 @@ export async function updateConversationBot(input: { id?: string; phone?: string
   if (error) throw new Error(error.message);
 
   return readConversations();
+}
+
+export async function getConversationSendWindow(input: { id?: string; phone?: string }): Promise<ConversationSendWindow> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return { allowed: false, reason: "missing_conversation" };
+
+  const phone = normalizePhone(input.phone);
+  let conversationQuery = supabase.from("conversations").select("id");
+
+  if (input.id) {
+    conversationQuery = conversationQuery.eq("id", input.id);
+  } else if (phone) {
+    conversationQuery = conversationQuery.eq("phone", phone);
+  } else {
+    return { allowed: false, reason: "missing_conversation" };
+  }
+
+  const { data: conversation, error: conversationError } = await conversationQuery.maybeSingle();
+  if (conversationError) throw new Error(conversationError.message);
+  if (!conversation?.id) return { allowed: false, reason: "conversation_not_found" };
+
+  const { data: latestInbound, error: latestInboundError } = await supabase
+    .from("messages")
+    .select("created_at")
+    .eq("conversation_id", conversation.id)
+    .eq("direction", "inbound")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestInboundError) throw new Error(latestInboundError.message);
+  if (!latestInbound?.created_at) {
+    return {
+      allowed: false,
+      reason: "no_customer_message",
+      conversationId: conversation.id
+    };
+  }
+
+  const lastInboundTime = new Date(latestInbound.created_at).getTime();
+  if (Number.isNaN(lastInboundTime)) {
+    return {
+      allowed: false,
+      reason: "no_customer_message",
+      conversationId: conversation.id
+    };
+  }
+
+  const hoursSinceLastInbound = (Date.now() - lastInboundTime) / (1000 * 60 * 60);
+  const allowed = hoursSinceLastInbound <= 24;
+
+  return {
+    allowed,
+    reason: allowed ? undefined : "whatsapp_session_expired",
+    conversationId: conversation.id,
+    lastInboundAt: latestInbound.created_at,
+    hoursSinceLastInbound
+  };
 }
 
 export async function createManualConversationMessage(input: ManualMessageInput) {

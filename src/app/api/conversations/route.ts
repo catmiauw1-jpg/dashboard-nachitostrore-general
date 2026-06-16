@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAdminRequest } from "@/lib/adminAuth";
-import { createManualConversationMessage, readConversations, updateConversationBot } from "@/lib/conversationRepository";
+import {
+  createManualConversationMessage,
+  getConversationSendWindow,
+  readConversations,
+  updateConversationBot
+} from "@/lib/conversationRepository";
 import { RequestSecurityError, assertAllowedOrigin, secureJsonHeaders } from "@/lib/requestSecurity";
 
 type ManualSendStatus =
@@ -168,6 +173,19 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Mensaje requerido." },
         { status: 400, headers: secureJsonHeaders(request) }
+      );
+    }
+
+    const sendWindow = await getConversationSendWindow({ id: body.id, phone: body.phone });
+    if (!sendWindow.allowed) {
+      const errorMessage =
+        sendWindow.reason === "whatsapp_session_expired"
+          ? "No se envio: este chat esta fuera de la ventana de 24 horas de WhatsApp. Abre WhatsApp manualmente o usa una plantilla aprobada por YCloud."
+          : "No se envio: el cliente todavia no escribio a este chat por WhatsApp.";
+
+      return NextResponse.json(
+        { error: errorMessage, sendWindow },
+        { status: 409, headers: secureJsonHeaders(request) }
       );
     }
 
