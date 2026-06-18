@@ -518,7 +518,59 @@ function getBotQrUrl(bot: BotWebhookResponse) {
   );
 }
 
-async function runBotAndSendReplies(request: Request, payload: Record<string, unknown>, phone: string) {
+type SyncedYCloudMessage = NonNullable<ReturnType<typeof extractSyncMessage>>;
+
+function buildBotPayload(payload: Record<string, unknown>, message: SyncedYCloudMessage) {
+  const attachments = message.attachmentUrl
+    ? [
+        {
+          url: message.attachmentUrl,
+          type: message.attachmentType || "file"
+        }
+      ]
+    : [];
+
+  return {
+    event: "whatsapp.inbound_message.received",
+    timestamp: message.createdAt,
+    phone: message.phone,
+    from: message.phone,
+    customerPhone: message.phone,
+    customerName: message.customerName,
+    name: message.customerName,
+    text: message.body,
+    content: message.body,
+    messageType: message.attachmentType || "text",
+    fromMe: false,
+    contact: {
+      name: message.customerName,
+      phone: message.phone,
+      phone_number: message.phone,
+      wa_id: message.phone
+    },
+    message: {
+      id: message.providerMessageId,
+      text: message.body,
+      body: message.body,
+      type: message.attachmentType || "text",
+      message_type: message.attachmentType || "text",
+      from: message.phone,
+      fromMe: false,
+      direction: "inbound",
+      timestamp: message.createdAt,
+      attachments
+    },
+    attachments,
+    providerPayload: payload
+  };
+}
+
+async function runBotAndSendReplies(
+  request: Request,
+  payload: Record<string, unknown>,
+  message: SyncedYCloudMessage
+) {
+  const phone = message.phone;
   const secret = process.env.N8N_WEBHOOK_SECRET || process.env.POLERAFLOW_WEBHOOK_SECRET;
   if (!secret) return { skipped: true, reason: "missing_n8n_webhook_secret" };
 
@@ -534,7 +586,7 @@ async function runBotAndSendReplies(request: Request, payload: Record<string, un
         "x-poleraflow-webhook-secret": secret,
         "x-poleraflow-skip-incoming-log": "1"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(buildBotPayload(payload, message))
     });
 
     botStatus = response.status;
@@ -659,7 +711,7 @@ export async function POST(request: Request) {
     const botCandidate = syncCandidate && !isStatusOnlyEvent(event) ? syncCandidate : null;
     const shouldRunBot = shouldTriggerBot(event, botCandidate, insertedMessage);
     const botResult = shouldRunBot && syncedMessage
-      ? await runBotAndSendReplies(request, payload, syncedMessage.phone)
+      ? await runBotAndSendReplies(request, payload, syncedMessage)
       : { skipped: true, reason: "not_inbound_new_message" };
 
     console.info("YCloud webhook processed.", {
