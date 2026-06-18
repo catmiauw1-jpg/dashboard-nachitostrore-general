@@ -67,6 +67,22 @@ function firstString(source: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
+function payloadEvent(payload: Record<string, unknown>) {
+  const data = getRecord(payload, "data");
+  const payloadBody = getRecord(payload, "payload");
+
+  return (
+    firstString(payload, ["event", "type", "eventType"]) ||
+    firstString(data, ["event", "type", "eventType"]) ||
+    firstString(payloadBody, ["event", "type", "eventType"])
+  );
+}
+
+function isStatusOnlyEvent(event: string) {
+  const normalizedEvent = event.toLowerCase();
+  return normalizedEvent.includes("message.updated") || normalizedEvent.includes("status");
+}
+
 function normalizePhone(value: unknown) {
   return typeof value === "string" ? value.replace(/\D/g, "").slice(0, 24) : "";
 }
@@ -466,7 +482,7 @@ function shouldTriggerBot(
   message: ReturnType<typeof extractSyncMessage> | null,
   insertedMessage: boolean
 ) {
-  if (!insertedMessage || !message) return false;
+  if (!message) return false;
   const normalizedEvent = event.toLowerCase();
   if (message.direction !== "inbound") return false;
   if (normalizedEvent.includes("message.updated")) return false;
@@ -474,7 +490,13 @@ function shouldTriggerBot(
   if (normalizedEvent.includes("history")) return false;
   if (normalizedEvent.includes("state.sync")) return false;
   if (normalizedEvent.includes("status")) return false;
-  return true;
+
+  const isDirectInboundEvent =
+    normalizedEvent.includes("inbound") ||
+    normalizedEvent.includes("message.received") ||
+    !normalizedEvent;
+
+  return insertedMessage || isDirectInboundEvent;
 }
 
 function getBotReplyMessages(bot: BotWebhookResponse) {
@@ -500,24 +522,44 @@ async function runBotAndSendReplies(request: Request, payload: Record<string, un
   const secret = process.env.N8N_WEBHOOK_SECRET || process.env.POLERAFLOW_WEBHOOK_SECRET;
   if (!secret) return { skipped: true, reason: "missing_n8n_webhook_secret" };
 
-  const botUrl = new URL("/api/webhooks/n8n/waflow-bot", request.url);
-  const response = await fetch(botUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-poleraflow-webhook-secret": secret,
-      "x-poleraflow-skip-incoming-log": "1"
-    },
-    body: JSON.stringify(payload)
-  });
+  let bot: BotWebhookResponse | null = null;
+  let botStatus = 0;
 
-  const bot = (await response.json().catch(() => null)) as BotWebhookResponse | null;
-  if (!response.ok || !bot?.ok || bot.duplicate) {
-    return {
-      ok: Boolean(bot?.ok),
-      skipped: true,
-      reason: bot?.duplicate ? "duplicate_bot_event" : bot?.error || response.statusText
-    };
+  try {
+    const botUrl = new URL("/api/webhooks/n8n/waflow-bot", request.url);
+    const response = await fetch(botUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-poleraflow-webhook-secret": secret,
+        "x-poleraflow-skip-incoming-log": "1"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    botStatus = response.status;
+    bot = (await response.json().catch(() => null)) as BotWebhookResponse | null;
+    if (!response.ok || !bot?.ok || bot.duplicate) {
+      const reason = bot?.duplicate ? "duplicate_bot_event" : bot?.error || response.statusText;
+      console.warn("YCloud bot processing skipped or failed.", {
+        status: response.status,
+        reason,
+        phoneSuffix: phone.slice(-4)
+      });
+      return {
+        ok: Boolean(bot?.ok),
+        skipped: true,
+        reason,
+        status: response.status
+      };
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "bot_request_failed";
+    console.error("YCloud bot request failed.", {
+      reason,
+      phoneSuffix: phone.slice(-4)
+    });
+    return { ok: false, skipped: true, reason: "bot_request_failed" };
   }
 
   const messages = getBotReplyMessages(bot);
@@ -543,6 +585,15 @@ async function runBotAndSendReplies(request: Request, payload: Record<string, un
       providerMessageId: delivery.sent ? delivery.providerMessageId : undefined,
       reason: delivery.sent ? undefined : delivery.reason,
       detail: delivery.sent ? undefined : delivery.detail
+    });
+  }
+
+  const failedDeliveries = deliveries.filter((delivery) => !delivery.sent);
+  if (failedDeliveries.length > 0) {
+    console.warn("YCloud bot reply delivery failed.", {
+      botStatus,
+      phoneSuffix: phone.slice(-4),
+      failed: failedDeliveries.map(({ type, reason, detail }) => ({ type, reason, detail }))
     });
   }
 
@@ -589,11 +640,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const event = firstString(payload, ["event", "type", "eventType"]);
-    const syncedMessage = extractSyncMessage(payload);
+    const event = payloadEvent(payload);
+    const syncCandidate = extractSyncMessage(payload);
+    const syncedMessage = syncCandidate && !isStatusOnlyEvent(event) ? syncCandidate : null;
     if (!syncedMessage) {
       console.warn("YCloud webhook ignored: no syncable message.", {
         event,
+        statusOnly: isStatusOnlyEvent(event),
         keys: Object.keys(payload).slice(0, 20)
       });
     }
@@ -603,10 +656,20 @@ export async function POST(request: Request) {
           source: "ycloud"
         })
       : false;
-    const shouldRunBot = shouldTriggerBot(event, syncedMessage, insertedMessage);
+    const botCandidate = syncCandidate && !isStatusOnlyEvent(event) ? syncCandidate : null;
+    const shouldRunBot = shouldTriggerBot(event, botCandidate, insertedMessage);
     const botResult = shouldRunBot && syncedMessage
       ? await runBotAndSendReplies(request, payload, syncedMessage.phone)
       : { skipped: true, reason: "not_inbound_new_message" };
+
+    console.info("YCloud webhook processed.", {
+      event,
+      direction: syncCandidate?.direction,
+      insertedMessage,
+      shouldRunBot,
+      botResult,
+      phoneSuffix: syncCandidate?.phone?.slice(-4)
+    });
 
     const message = extractMessagePayload(payload);
 
