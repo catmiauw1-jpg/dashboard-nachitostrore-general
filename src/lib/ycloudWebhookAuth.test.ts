@@ -15,6 +15,10 @@ function rawSignature(body = rawBody, requestTimestamp = timestamp) {
     .digest("hex");
 }
 
+function bodyOnlySignature(body = rawBody) {
+  return createHmac("sha256", secret).update(body).digest("hex");
+}
+
 test("fails closed with 503 when the YCloud secret is missing", () => {
   const result = verifyYCloudWebhook({
     headers: new Headers(),
@@ -33,6 +37,46 @@ test("accepts a valid raw-body HMAC bound to a fresh timestamp", () => {
   });
 
   assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), { ok: true });
+});
+
+test("accepts YCloud's raw-body HMAC when its request has no timestamp header", () => {
+  const headers = new Headers({
+    "x-ycloud-signature": `sha256=${bodyOnlySignature()}`
+  });
+
+  assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), { ok: true });
+});
+
+test("rejects an invalid raw-body HMAC when its request has no timestamp header", () => {
+  const headers = new Headers({
+    "x-ycloud-signature": "sha256=invalid"
+  });
+
+  assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), {
+    ok: false,
+    status: 401,
+    reason: "invalid_signature"
+  });
+});
+
+test("reports a missing signature before requiring a timestamp", () => {
+  assert.deepEqual(
+    verifyYCloudWebhook({ headers: new Headers(), rawBody, secret, nowMs }),
+    { ok: false, status: 401, reason: "missing_signature" }
+  );
+});
+
+test("still requires a timestamp for the standard webhook signature format", () => {
+  const headers = new Headers({
+    "webhook-id": "msg_test",
+    "webhook-signature": "v1,invalid"
+  });
+
+  assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), {
+    ok: false,
+    status: 401,
+    reason: "missing_timestamp"
+  });
 });
 
 test("rejects a signature computed from reserialized JSON", () => {

@@ -88,15 +88,6 @@ export function verifyYCloudWebhook({
     "x-yc-timestamp",
     "x-signature-timestamp"
   ]);
-  if (!timestamp) {
-    return { ok: false, status: 401, reason: "missing_timestamp" };
-  }
-
-  const timestampMs = timestampMilliseconds(timestamp);
-  if (!Number.isFinite(timestampMs) || Math.abs(nowMs - timestampMs) > MAX_TIMESTAMP_AGE_MS) {
-    return { ok: false, status: 401, reason: "invalid_timestamp" };
-  }
-
   const standardSignature = firstHeader(headers, [
     "webhook-signature",
     "svix-signature",
@@ -114,10 +105,21 @@ export function verifyYCloudWebhook({
     return { ok: false, status: 401, reason: "missing_signature" };
   }
 
+  if (timestamp) {
+    const timestampMs = timestampMilliseconds(timestamp);
+    if (!Number.isFinite(timestampMs) || Math.abs(nowMs - timestampMs) > MAX_TIMESTAMP_AGE_MS) {
+      return { ok: false, status: 401, reason: "invalid_timestamp" };
+    }
+  }
+
   const key = secretBytes(configuredSecret);
   const webhookId = firstHeader(headers, ["webhook-id", "svix-id", "x-webhook-id"]);
 
-  if (standardSignature && webhookId) {
+  if (standardSignature && !timestamp && !rawSignature) {
+    return { ok: false, status: 401, reason: "missing_timestamp" };
+  }
+
+  if (standardSignature && webhookId && timestamp) {
     const expected = digest(key, `${webhookId}.${timestamp}.`, rawBody, "base64");
     if (signatureCandidates(standardSignature).some((candidate) => safeEqual(candidate, expected))) {
       return { ok: true };
@@ -125,8 +127,9 @@ export function verifyYCloudWebhook({
   }
 
   if (rawSignature) {
-    const expectedHex = digest(key, `${timestamp}.`, rawBody, "hex");
-    const expectedBase64 = digest(key, `${timestamp}.`, rawBody, "base64");
+    const prefix = timestamp ? `${timestamp}.` : "";
+    const expectedHex = digest(key, prefix, rawBody, "hex");
+    const expectedBase64 = digest(key, prefix, rawBody, "base64");
     const matches = signatureCandidates(rawSignature).some(
       (candidate) => safeEqual(candidate.toLowerCase(), expectedHex) || safeEqual(candidate, expectedBase64)
     );
