@@ -579,7 +579,12 @@ export async function POST(request: Request) {
     });
 
     if (!verification.ok) {
-      console.warn("YCloud webhook rejected.", { reason: verification.reason });
+      console.warn("YCloud webhook rejected.", {
+        reason: verification.reason,
+        headerNames: Array.from(request.headers.keys())
+          .filter((name) => name.includes("signature") || name.includes("webhook") || name.includes("ycloud"))
+          .sort()
+      });
       return NextResponse.json(
         { error: verification.status === 503 ? "Webhook no configurado." : "Webhook no autorizado." },
         { status: verification.status, headers: secureJsonHeaders(request) }
