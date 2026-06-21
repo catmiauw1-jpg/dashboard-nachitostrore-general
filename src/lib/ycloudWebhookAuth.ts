@@ -94,6 +94,7 @@ export function verifyYCloudWebhook({
     "x-webhook-signature"
   ]);
   const rawSignature = firstHeader(headers, [
+    "ycloud-signature",
     "x-yc-signature",
     "x-ycloud-signature",
     "x-signature-256",

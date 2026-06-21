@@ -47,6 +47,14 @@ test("accepts YCloud's raw-body HMAC when its request has no timestamp header", 
   assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), { ok: true });
 });
 
+test("accepts the ycloud-signature header used by YCloud production webhooks", () => {
+  const headers = new Headers({
+    "ycloud-signature": `sha256=${bodyOnlySignature()}`
+  });
+
+  assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), { ok: true });
+});
+
 test("rejects an invalid raw-body HMAC when its request has no timestamp header", () => {
   const headers = new Headers({
     "x-ycloud-signature": "sha256=invalid"
