@@ -63,6 +63,14 @@ interface DeliveryStatusInput {
   occurredAt?: string;
 }
 
+interface LinkProviderDeliveryInput {
+  messageId: string;
+  providerMessageId?: string;
+  status: "accepted" | "failed";
+  error?: string;
+  payload?: Record<string, unknown>;
+}
+
 interface OrderConversationSyncInput {
   customerPhone?: string;
   customerName?: string;
@@ -626,6 +634,47 @@ export async function updateMessageDeliveryStatus(input: DeliveryStatusInput) {
         deliveryUpdatedAt: now
       },
       ...timestampUpdates
+    })
+    .eq("id", current.id);
+
+  if (error) {
+    if (isMissingDeliveryColumn(error)) return false;
+    throw new Error(error.message);
+  }
+
+  return true;
+}
+
+export async function linkMessageProviderDelivery(input: LinkProviderDeliveryInput) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return false;
+
+  const messageId = input.messageId.trim();
+  if (!messageId) return false;
+
+  const now = new Date().toISOString();
+  const { data: current, error: readError } = await supabase
+    .from("messages")
+    .select("id, metadata")
+    .eq("id", messageId)
+    .maybeSingle();
+
+  if (readError) throw new Error(readError.message);
+  if (!current?.id) return false;
+
+  const metadata = (current.metadata ?? {}) as Record<string, unknown>;
+  const { error } = await supabase
+    .from("messages")
+    .update({
+      provider_message_id: input.providerMessageId ?? null,
+      delivery_status: input.status,
+      delivery_error: input.error ?? null,
+      sent_at: input.status === "accepted" ? now : null,
+      metadata: {
+        ...metadata,
+        ycloudSend: input.payload ?? null,
+        deliveryUpdatedAt: now
+      }
     })
     .eq("id", current.id);
 

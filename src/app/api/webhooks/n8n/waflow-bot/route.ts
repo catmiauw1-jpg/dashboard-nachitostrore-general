@@ -2048,18 +2048,35 @@ export async function POST(request: Request) {
     }
 
     const replyMessages = splitReplyMessages(replyText);
+    let botMessageIds: string[] = [];
 
-    if (replyText) {
-      await supabase.from("messages").insert({
-        conversation_id: conversation.id,
-        direction: "outbound",
-        body: replyText,
-        source: "bot",
-        metadata: {
-          botState: state,
-          needsHuman
-        }
-      });
+    if (replyMessages.length > 0) {
+      const { data: insertedMessages, error: insertMessagesError } = await supabase
+        .from("messages")
+        .insert(
+          replyMessages.map((messageBody, index) => ({
+            conversation_id: conversation.id,
+            direction: "outbound",
+            body: messageBody,
+            source: "bot",
+            delivery_status: "pending",
+            metadata: {
+              botState: state,
+              needsHuman,
+              replyIndex: index,
+              replyCount: replyMessages.length
+            }
+          }))
+        )
+        .select("id");
+
+      if (insertMessagesError) {
+        throw new Error(`No se pudieron registrar las respuestas del bot: ${insertMessagesError.message}`);
+      }
+
+      botMessageIds = (insertedMessages ?? [])
+        .map((message) => typeof message.id === "string" ? message.id : "")
+        .filter(Boolean);
     } else {
       await supabase.from("messages").insert({
         conversation_id: conversation.id,
@@ -2111,6 +2128,7 @@ export async function POST(request: Request) {
         conversationId: conversation.id,
         order: state.order ?? null,
         replyMessages,
+        botMessageIds,
         replyTargetPhone: phone,
         ...waflowContext,
         paymentChoice: state.paymentChoice,

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { createSyncedProviderMessage, updateMessageDeliveryStatus } from "@/lib/conversationRepository";
+import {
+  createSyncedProviderMessage,
+  linkMessageProviderDelivery,
+  updateMessageDeliveryStatus
+} from "@/lib/conversationRepository";
+import { buildDeliveryTrackingUpdate } from "@/lib/ycloudDeliveryTracking";
 import { assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
 import { sendYCloudImageMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 import { verifyYCloudWebhook } from "@/lib/ycloudWebhookAuth";
@@ -371,6 +376,7 @@ type BotWebhookResponse = {
   ok?: boolean;
   replyText?: string;
   replyMessages?: string[];
+  botMessageIds?: string[];
   replyTargetPhone?: string;
   sendPaymentQr?: boolean;
   payment_flow?: {
@@ -524,8 +530,23 @@ async function runBotAndSendReplies(
   const messages = getBotReplyMessages(bot);
   const deliveries = [];
 
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     const delivery = await sendYCloudTextMessage(bot.replyTargetPhone || phone, message);
+    const trackingUpdate = buildDeliveryTrackingUpdate(bot.botMessageIds?.[index], delivery);
+    if (trackingUpdate) {
+      try {
+        await linkMessageProviderDelivery({
+          ...trackingUpdate,
+          payload: delivery.response
+        });
+      } catch (error) {
+        console.error("No se pudo guardar el estado de entrega de YCloud", {
+          messageId: trackingUpdate.messageId,
+          providerMessageId: trackingUpdate.providerMessageId,
+          error: error instanceof Error ? error.message : "Error desconocido"
+        });
+      }
+    }
     deliveries.push({
       type: "text",
       sent: delivery.sent,
