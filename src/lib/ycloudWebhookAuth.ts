@@ -38,6 +38,22 @@ function signatureCandidates(value: string) {
     .filter(Boolean);
 }
 
+function ycloudSignatureParts(value: string) {
+  const parts = value.split(",").reduce<Record<string, string>>((result, part) => {
+    const separator = part.indexOf("=");
+    if (separator < 1) return result;
+
+    const key = part.slice(0, separator).trim().toLowerCase();
+    const value = part.slice(separator + 1).trim();
+    return key && value ? { ...result, [key]: value } : result;
+  }, {});
+
+  return {
+    timestamp: parts.t ?? "",
+    signature: parts.s ?? ""
+  };
+}
+
 function safeEqual(candidate: string, expected: string) {
   const left = Buffer.from(candidate);
   const right = Buffer.from(expected);
@@ -93,8 +109,8 @@ export function verifyYCloudWebhook({
     "svix-signature",
     "x-webhook-signature"
   ]);
+  const ycloudSignature = firstHeader(headers, ["ycloud-signature"]);
   const rawSignature = firstHeader(headers, [
-    "ycloud-signature",
     "x-yc-signature",
     "x-ycloud-signature",
     "x-signature-256",
@@ -103,7 +119,36 @@ export function verifyYCloudWebhook({
   ]);
 
   if (!standardSignature && !rawSignature) {
-    return { ok: false, status: 401, reason: "missing_signature" };
+    if (!ycloudSignature) {
+      return { ok: false, status: 401, reason: "missing_signature" };
+    }
+  }
+
+  if (ycloudSignature) {
+    const official = ycloudSignatureParts(ycloudSignature);
+    if (official.timestamp || official.signature) {
+      if (!official.timestamp) {
+        return { ok: false, status: 401, reason: "missing_timestamp" };
+      }
+      if (!official.signature) {
+        return { ok: false, status: 401, reason: "missing_signature" };
+      }
+
+      const timestampMs = timestampMilliseconds(official.timestamp);
+      if (!Number.isFinite(timestampMs) || Math.abs(nowMs - timestampMs) > MAX_TIMESTAMP_AGE_MS) {
+        return { ok: false, status: 401, reason: "invalid_timestamp" };
+      }
+
+      const expected = digest(
+        Buffer.from(configuredSecret, "utf8"),
+        `${official.timestamp}.`,
+        rawBody,
+        "hex"
+      );
+      return safeEqual(official.signature.toLowerCase(), expected)
+        ? { ok: true }
+        : { ok: false, status: 401, reason: "invalid_signature" };
+    }
   }
 
   if (timestamp) {
@@ -127,11 +172,12 @@ export function verifyYCloudWebhook({
     }
   }
 
-  if (rawSignature) {
+  const legacyRawSignature = rawSignature || ycloudSignature;
+  if (legacyRawSignature) {
     const prefix = timestamp ? `${timestamp}.` : "";
     const expectedHex = digest(key, prefix, rawBody, "hex");
     const expectedBase64 = digest(key, prefix, rawBody, "base64");
-    const matches = signatureCandidates(rawSignature).some(
+    const matches = signatureCandidates(legacyRawSignature).some(
       (candidate) => safeEqual(candidate.toLowerCase(), expectedHex) || safeEqual(candidate, expectedBase64)
     );
     if (matches) return { ok: true };

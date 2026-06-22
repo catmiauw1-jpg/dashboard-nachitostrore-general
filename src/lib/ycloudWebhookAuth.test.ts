@@ -55,6 +55,40 @@ test("accepts the ycloud-signature header used by YCloud production webhooks", (
   assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), { ok: true });
 });
 
+test("accepts YCloud's official t,s signature with the webhook secret verbatim", () => {
+  const ycloudSecret = "whsec_not-base64-secret";
+  const signature = createHmac("sha256", ycloudSecret)
+    .update(`${timestamp}.`)
+    .update(rawBody)
+    .digest("hex");
+  const headers = new Headers({
+    "ycloud-signature": `t=${timestamp},s=${signature}`,
+    "x-webhook-endpoint-id": "endpoint_test"
+  });
+
+  assert.deepEqual(
+    verifyYCloudWebhook({ headers, rawBody, secret: ycloudSecret, nowMs }),
+    { ok: true }
+  );
+});
+
+test("rejects a stale timestamp embedded in YCloud's t,s signature", () => {
+  const staleTimestamp = String(Math.floor((nowMs - 300_001) / 1000));
+  const signature = createHmac("sha256", secret)
+    .update(`${staleTimestamp}.`)
+    .update(rawBody)
+    .digest("hex");
+  const headers = new Headers({
+    "ycloud-signature": `t=${staleTimestamp},s=${signature}`
+  });
+
+  assert.deepEqual(verifyYCloudWebhook({ headers, rawBody, secret, nowMs }), {
+    ok: false,
+    status: 401,
+    reason: "invalid_timestamp"
+  });
+});
+
 test("rejects an invalid raw-body HMAC when its request has no timestamp header", () => {
   const headers = new Headers({
     "x-ycloud-signature": "sha256=invalid"
