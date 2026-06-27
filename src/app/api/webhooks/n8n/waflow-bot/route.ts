@@ -5,6 +5,11 @@ import { type PaymentProofEvidence, parseProofEvidence, sameMoney } from "@/lib/
 import { requireSupabaseAdminClient } from "@/lib/supabase";
 import { RequestSecurityError, assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
 import { generateWhatsappSalesReply } from "@/lib/whatsappSalesAgent";
+import {
+  parseConfirmationIntent,
+  parseDeliveryIntent,
+  parsePaymentIntent
+} from "@/lib/whatsappIntent";
 
 const maxBotBodyBytes = 1024 * 1024;
 const nachitoStoreUrl = process.env.NACHITO_STORE_URL ?? "https://nachitostore.vercel.app";
@@ -664,67 +669,13 @@ function hasApproxWord(text: string, targets: string[]) {
 }
 
 function isConfirmationIntent(text: string) {
-  const normalized = normalizeIntentText(text);
-  if (!normalized) return false;
-
-  const negativeFirst = [
-    "no esta bien",
-    "no esta correcto",
-    "no es correcto",
-    "no esta perfecto",
-    "no quiero",
-    "mejor no",
-    "cancelar",
-    "cancela"
-  ];
-
-  if (hasAnyPhrase(normalized, negativeFirst)) return false;
-
-  const exactConfirmations = new Set([
-    "si",
-    "sii",
-    "siii",
-    "sip",
-    "sep",
-    "ok",
-    "okay",
-    "dale",
-    "listo",
-    "correcto",
-    "confirmo",
-    "confirmar",
-    "adelante",
-    "perfecto",
-    "bien"
-  ]);
-
-  if (exactConfirmations.has(normalized)) return true;
-
-  return hasAnyPhrase(normalized, [
-    "esta perfecto",
-    "esta bien",
-    "todo bien",
-    "todo esta bien",
-    "todo esta perfecto",
-    "asi esta bien",
-    "asi esta perfecto",
-    "me parece bien",
-    "de acuerdo",
-    "dale nomas",
-    "dale no mas",
-    "si esta bien",
-    "si todo",
-    "si dale",
-    "si confirmo",
-    "confirmo el pedido",
-    "es correcto",
-    "esta correcto"
-  ]);
+  return parseConfirmationIntent(text) === "confirm";
 }
 
 function isCancelIntent(text: string) {
   const normalized = normalizeIntentText(text);
   if (!normalized) return false;
+  if (parseConfirmationIntent(text) === "cancel") return true;
 
   const exactCancellations = new Set([
     "no",
@@ -803,27 +754,21 @@ function isNoOrderClaimIntent(text: string) {
 
 function isHalfPaymentIntent(text: string, state?: BotState) {
   const normalized = normalizeIntentText(text);
-  if (state?.stage === "esperando_tipo_pago" && normalized === "1") return true;
-  return /(^|\s)(50%?|mitad|medio|adelanto|anticipo|media)(\s|$)/i.test(normalized);
+  if (["1", "2"].includes(normalized) && state?.stage !== "esperando_tipo_pago") return false;
+  return parsePaymentIntent(text) === "half";
 }
 
 function isFullPaymentIntent(text: string, state?: BotState) {
   const normalized = normalizeIntentText(text);
-  if (state?.stage === "esperando_tipo_pago" && normalized === "2") return true;
-  return /(^|\s)(completo|completa|todo|total|100%?|pago completo|pagar todo)(\s|$)/i.test(normalized);
-}
-
-function isSantaCruzIntent(text: string) {
-  const normalized = normalizeIntentText(text);
-  return normalized === "1" || normalized === "santa cruz" || normalized === "scz" || normalized === "santa";
-}
-
-function isOtherDepartmentIntent(text: string) {
-  const normalized = normalizeIntentText(text);
-  return normalized === "2" || hasAnyPhrase(normalized, ["otro departamento", "otro depto", "flota", "fuera de santa cruz"]);
+  if (["1", "2"].includes(normalized) && state?.stage !== "esperando_tipo_pago") return false;
+  return parsePaymentIntent(text) === "full";
 }
 
 function parseDepartmentName(text: string) {
+  const deliveryIntent = parseDeliveryIntent(text);
+  if (deliveryIntent?.area === "otro_departamento" && deliveryIntent.department) {
+    return deliveryIntent.department;
+  }
   const normalized = cleanText(text, 80).replace(/^\s*(departamento|depto|soy de|en|a)\s+/i, "").trim();
   if (!normalized || ["1", "2"].includes(normalized)) return "";
   return titleCase(normalized) ?? "";
@@ -1043,7 +988,7 @@ function buildFaqReply(text: string, state: BotState) {
 
   const suffix = state.order
     ? " Si seguimos con tu pedido, responde SI. Si quieres cambiarlo, dime CAMBIAR."
-    : ` Para pedir, entra a la web: ${nachitoStoreUrl}`;
+    : "";
 
   const asksTiming = hasAnyPhrase(normalized, [
     "cuanto tarda",
@@ -1135,7 +1080,7 @@ function buildFaqReply(text: string, state: BotState) {
   if (hasAnyPhrase(normalized, ["precio", "cuesta", "vale", "costo", "cotizar"])) {
     return state.order
       ? `Tu pedido esta en ${state.order.total || "precio por confirmar"} Bs.${suffix}`
-      : `Los precios del catalogo van desde Bs 125 a Bs 180 y las personalizadas desde Bs 155. Puedes cotizar desde la web: ${nachitoStoreUrl}`;
+      : "Los precios del catalogo van desde Bs 125 a Bs 180 y las personalizadas desde Bs 155.";
   }
 
   if (hasAnyPhrase(normalized, ["stock", "disponible", "hay talla", "talla disponible", "colores"])) {
@@ -1731,19 +1676,32 @@ async function nextBotStateV2(
   }
 
   if (state.stage === "esperando_ubicacion" && state.order) {
-    if (isSantaCruzIntent(text)) {
+    const deliveryIntent = parseDeliveryIntent(text);
+
+    if (deliveryIntent?.area === "santa_cruz") {
       nextState = { ...nextState, stage: "esperando_tipo_pago", deliveryArea: "santa_cruz" };
       replyText = buildPaymentChoiceReply(state.order, nextState);
       return { state: nextState, replyText, needsHuman };
     }
 
-    if (isOtherDepartmentIntent(text)) {
+    if (deliveryIntent?.area === "otro_departamento" && deliveryIntent.department) {
+      nextState = {
+        ...nextState,
+        stage: "esperando_tipo_pago",
+        deliveryArea: "otro_departamento",
+        deliveryDepartment: deliveryIntent.department
+      };
+      replyText = buildPaymentChoiceReply(state.order, nextState);
+      return { state: nextState, replyText, needsHuman };
+    }
+
+    if (deliveryIntent?.area === "otro_departamento") {
       nextState = { ...nextState, stage: "esperando_departamento", deliveryArea: "otro_departamento" };
       replyText = buildDepartmentQuestionReply();
       return { state: nextState, replyText, needsHuman };
     }
 
-    replyText = buildLocationQuestionReply();
+    replyText = `No alcancé a identificar tu ubicación.\n\n${buildLocationQuestionReply()}`;
     return { state: nextState, replyText, needsHuman };
   }
 
@@ -1801,7 +1759,7 @@ async function nextBotStateV2(
       if (asksForNewOrder) {
         replyText = `Hola ${customerName}, tienes un pedido pendiente.\n\nResponde SI para confirmarlo o NO para cancelarlo.`;
       } else {
-        replyText = `Antes de avanzar, confirma este pedido:\n\n${buildSummary(state.order)}\n\nResponde SI o NO.`;
+        replyText = "No alcancé a saber si confirmas el pedido.\n\nResponde SI para continuar o NO para cancelarlo.";
       }
       return { state: nextState, replyText, needsHuman };
     }
