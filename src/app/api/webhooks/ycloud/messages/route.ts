@@ -5,6 +5,7 @@ import {
   updateMessageDeliveryStatus
 } from "@/lib/conversationRepository";
 import { buildDeliveryTrackingUpdate } from "@/lib/ycloudDeliveryTracking";
+import { formatWhatsappMessage } from "@/lib/whatsappMessageFormatting";
 import { assertBodySize, cleanText, secureJsonHeaders } from "@/lib/requestSecurity";
 import { sendYCloudImageMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 import { verifyYCloudWebhook } from "@/lib/ycloudWebhookAuth";
@@ -414,10 +415,10 @@ function shouldTriggerBot(
 
 function getBotReplyMessages(bot: BotWebhookResponse) {
   if (Array.isArray(bot.replyMessages)) {
-    return bot.replyMessages.map((message) => cleanText(message, 1800)).filter(Boolean);
+    return bot.replyMessages.map((message) => formatWhatsappMessage(message, 1800)).filter(Boolean);
   }
 
-  const fallback = cleanText(bot.replyText, 1800);
+  const fallback = formatWhatsappMessage(bot.replyText, 1800);
   return fallback ? [fallback] : [];
 }
 

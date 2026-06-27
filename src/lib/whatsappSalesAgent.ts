@@ -1,4 +1,5 @@
 import { cleanText } from "@/lib/requestSecurity";
+import { formatWhatsappMessage } from "@/lib/whatsappMessageFormatting";
 
 type SalesAgentMessage = {
   role: "system" | "user";
@@ -121,7 +122,7 @@ async function callOpenAiCompatible(messages: SalesAgentMessage[]) {
 
   if (!response.ok) return null;
   const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return cleanText(json.choices?.[0]?.message?.content, 1200);
+  return formatWhatsappMessage(json.choices?.[0]?.message?.content, 1200);
 }
 
 async function callGemini(messages: SalesAgentMessage[]) {
@@ -152,7 +153,7 @@ async function callGemini(messages: SalesAgentMessage[]) {
 
   if (!response.ok) return null;
   const json = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-  return cleanText(json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n"), 1200);
+  return formatWhatsappMessage(json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n"), 1200);
 }
 
 async function callOllama(messages: SalesAgentMessage[]) {
@@ -173,11 +174,11 @@ async function callOllama(messages: SalesAgentMessage[]) {
 
   if (!response.ok) return null;
   const json = (await response.json()) as { message?: { content?: string } };
-  return cleanText(json.message?.content, 1200);
+  return formatWhatsappMessage(json.message?.content, 1200);
 }
 
 function cleanAgentReply(reply: string, fallback: string) {
-  const cleaned = cleanText(reply, 1200)
+  const cleaned = formatWhatsappMessage(reply, 1200)
     .replace(/^["'`]+|["'`]+$/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
