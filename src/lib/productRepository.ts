@@ -3,6 +3,13 @@ import { createSupabaseAdminClient, createSupabasePublicClient } from "@/lib/sup
 import { readStockByProductIds } from "@/lib/stockRepository";
 import type { Product } from "@/types";
 
+export class CatalogUnavailableError extends Error {
+  constructor() {
+    super("El catálogo no está disponible temporalmente.");
+    this.name = "CatalogUnavailableError";
+  }
+}
+
 interface ProductRow {
   id: string;
   name: string;
@@ -103,9 +110,10 @@ export async function readCatalogProducts(): Promise<Product[]> {
   return attachStock((data as ProductRow[]).map(rowToProduct));
 }
 
-export async function readPublicCatalogProducts(options: { includeHidden?: boolean } = {}): Promise<Product[]> {
+export async function readPublicCatalogProducts(options: { includeHidden?: boolean; requireDatabase?: boolean } = {}): Promise<Product[]> {
   const supabase = options.includeHidden ? createSupabaseAdminClient() : createSupabasePublicClient();
   if (!supabase) {
+    if (options.requireDatabase) throw new CatalogUnavailableError();
     const products = await readFileCatalogProducts();
     return options.includeHidden ? products : products.filter((product) => !product.isHidden);
   }
@@ -122,6 +130,7 @@ export async function readPublicCatalogProducts(options: { includeHidden?: boole
   const { data, error } = await query;
 
   if (error) {
+    if (options.requireDatabase) throw new CatalogUnavailableError();
     console.warn("Supabase public products read failed. Falling back to file catalog.", error.message);
     const products = await readFileCatalogProducts();
     return options.includeHidden ? products : products.filter((product) => !product.isHidden);

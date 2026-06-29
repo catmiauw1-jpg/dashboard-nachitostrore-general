@@ -14,6 +14,13 @@ import type {
   SalesChannel
 } from "@/types";
 
+export class OrderNotFoundError extends Error {
+  constructor() {
+    super("Pedido no encontrado.");
+    this.name = "OrderNotFoundError";
+  }
+}
+
 interface OrderNotesPayload {
   notes?: string;
   source?: OrderSource;
@@ -414,6 +421,7 @@ export async function updateOrder(
     .eq("order_number", cleanOrderNumber(orderId))
     .single();
 
+  if (currentError?.code === "PGRST116") throw new OrderNotFoundError();
   if (currentError) throw new Error(currentError.message);
 
   const currentOrder = rowToOrder(currentRow as OrderRow);

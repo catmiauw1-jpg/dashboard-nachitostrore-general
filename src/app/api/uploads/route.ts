@@ -2,20 +2,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { requireAdminRequest } from "@/lib/adminAuth";
+import { optimizeProductImage, ProductImageError } from "@/lib/productImageOptimization";
 import { RequestSecurityError, assertAllowedOrigin, assertBodySize, secureJsonHeaders } from "@/lib/requestSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase";
 
-const allowedTypes = new Map([
-  ["image/jpeg", ".jpg"],
-  ["image/png", ".png"],
-  ["image/webp", ".webp"],
-  ["image/gif", ".gif"]
-]);
+const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const productImagesBucket = "product-images";
 const maxProductImageBytes = 5 * 1024 * 1024;
 
-function safeFileName(name: string, fileType: string) {
-  const extension = allowedTypes.get(fileType) ?? ".png";
+function safeFileName(name: string) {
   const baseName = path
     .basename(name, path.extname(name))
     .normalize("NFD")
@@ -24,7 +19,7 @@ function safeFileName(name: string, fileType: string) {
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
 
-  return `${baseName || "producto"}-${Date.now()}${extension}`;
+  return `${baseName || "producto"}-${Date.now()}.webp`;
 }
 
 export async function OPTIONS(request: Request) {
@@ -34,6 +29,9 @@ export async function OPTIONS(request: Request) {
 export async function POST(request: Request) {
   try {
     assertAllowedOrigin(request);
+    if (!request.headers.get("content-length")) {
+      throw new RequestSecurityError("La carga debe indicar su tamaño.", 411);
+    }
     assertBodySize(request, maxProductImageBytes + 1024 * 1024);
     await requireAdminRequest(request);
   } catch (error) {
@@ -63,21 +61,31 @@ export async function POST(request: Request) {
     );
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const fileName = safeFileName(file.name, file.type);
+  let bytes: Buffer;
+  try {
+    bytes = await optimizeProductImage(Buffer.from(await file.arrayBuffer()));
+  } catch (error) {
+    const message =
+      error instanceof ProductImageError
+        ? error.message
+        : "No se pudo procesar la imagen. Intenta con otro archivo.";
+    return NextResponse.json({ error: message }, { status: 400, headers: secureJsonHeaders(request) });
+  }
+
+  const fileName = safeFileName(file.name);
   const supabase = createSupabaseAdminClient();
 
   if (supabase) {
     const storagePath = `products/${fileName}`;
     let { error } = await supabase.storage.from(productImagesBucket).upload(storagePath, bytes, {
-      contentType: file.type,
+      contentType: "image/webp",
       upsert: true
     });
 
     if (error && /bucket|not found|does not exist/i.test(error.message)) {
       await supabase.storage.createBucket(productImagesBucket, { public: true });
       const retry = await supabase.storage.from(productImagesBucket).upload(storagePath, bytes, {
-        contentType: file.type,
+        contentType: "image/webp",
         upsert: true
       });
       error = retry.error;

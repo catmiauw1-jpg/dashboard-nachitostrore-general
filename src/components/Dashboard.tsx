@@ -19,6 +19,10 @@ import { Topbar } from "@/components/Topbar";
 import { createSupabaseBrowserClient } from "@/lib/browserSupabase";
 import { displayStockName } from "@/lib/format";
 import {
+  mergeRealtimeMessage,
+  type RealtimeMessageRow
+} from "@/lib/realtimeMessages";
+import {
   navigationItems,
   products,
   stockData
@@ -31,6 +35,10 @@ interface DashboardProps {
   adminEmail: string;
   onSignOut: () => void | Promise<void>;
 }
+
+type BusinessResource = "stock" | "orders" | "customers" | "expenses" | "conversations";
+
+const businessResources: BusinessResource[] = ["stock", "orders", "customers", "expenses", "conversations"];
 
 const monthKeys: MonthKey[] = [
   "enero",
@@ -237,55 +245,47 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     [authHeaders]
   );
 
-  const refreshBusinessData = useCallback(async (options?: { showError?: boolean; notifyNewOrders?: boolean }) => {
+  const refreshBusinessData = useCallback(async (options?: {
+    resources?: BusinessResource[];
+    showError?: boolean;
+    notifyNewOrders?: boolean;
+  }) => {
+    const resources = new Set(options?.resources ?? businessResources);
+
     try {
-      const [productsResponse, stockResponse, ordersResponse, customersResponse, expensesResponse, conversationsResponse] = await Promise.all([
-        apiFetch("/api/products", { cache: "no-store" }),
-        apiFetch("/api/stock", { cache: "no-store" }),
-        apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }),
-        apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }),
-        apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" }),
-        apiFetch(`/api/conversations?ts=${Date.now()}`, { cache: "no-store" })
+      await Promise.all([
+        resources.has("stock") && apiFetch("/api/stock", { cache: "no-store" }).then(async (response) => {
+          if (!response.ok) return;
+          const data = (await response.json()) as { stock: StockItem[]; products: Product[] };
+          setStockList(data.stock);
+          setProductList(data.products);
+        }),
+        resources.has("orders") && apiFetch(`/api/orders?ts=${Date.now()}`, { cache: "no-store" }).then(async (response) => {
+          if (!response.ok) return;
+          const nextOrders = (await response.json()) as Order[];
+          const previousIds = orderIdsRef.current;
+          const newOrders = nextOrders.filter((order) => !previousIds.has(order.id));
+
+          setOrderList(nextOrders);
+          orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
+
+          if (options?.notifyNewOrders && hasLoadedOrdersRef.current && newOrders.length) {
+            const label = newOrders.length === 1 ? newOrders[0].id : `${newOrders.length} pedidos`;
+            showToast(`Nuevo pedido registrado: ${label}.`);
+          }
+
+          hasLoadedOrdersRef.current = true;
+        }),
+        resources.has("customers") && apiFetch(`/api/customers?ts=${Date.now()}`, { cache: "no-store" }).then(async (response) => {
+          if (response.ok) setCustomerList((await response.json()) as Customer[]);
+        }),
+        resources.has("expenses") && apiFetch(`/api/expenses?ts=${Date.now()}`, { cache: "no-store" }).then(async (response) => {
+          if (response.ok) setExpenseList((await response.json()) as Expense[]);
+        }),
+        resources.has("conversations") && apiFetch(`/api/conversations?ts=${Date.now()}`, { cache: "no-store" }).then(async (response) => {
+          if (response.ok) setChats((await response.json()) as Conversation[]);
+        })
       ]);
-
-      if (productsResponse.ok) {
-        const nextProducts = (await productsResponse.json()) as Product[];
-        if (nextProducts.length) setProductList(nextProducts);
-      }
-
-      if (stockResponse.ok) {
-        const data = (await stockResponse.json()) as { stock: StockItem[]; products: Product[] };
-        setStockList(data.stock);
-        if (data.products.length) setProductList(data.products);
-      }
-
-      if (ordersResponse.ok) {
-        const nextOrders = (await ordersResponse.json()) as Order[];
-        const previousIds = orderIdsRef.current;
-        const newOrders = nextOrders.filter((order) => !previousIds.has(order.id));
-
-        setOrderList(nextOrders);
-        orderIdsRef.current = new Set(nextOrders.map((order) => order.id));
-
-        if (options?.notifyNewOrders && hasLoadedOrdersRef.current && newOrders.length) {
-          const label = newOrders.length === 1 ? newOrders[0].id : `${newOrders.length} pedidos`;
-          showToast(`Nuevo pedido registrado: ${label}.`);
-        }
-
-        hasLoadedOrdersRef.current = true;
-      }
-
-      if (customersResponse.ok) {
-        setCustomerList((await customersResponse.json()) as Customer[]);
-      }
-
-      if (expensesResponse.ok) {
-        setExpenseList((await expensesResponse.json()) as Expense[]);
-      }
-
-      if (conversationsResponse.ok) {
-        setChats((await conversationsResponse.json()) as Conversation[]);
-      }
     } catch {
       if (options?.showError) {
         showToast("No se pudo cargar el catálogo persistente. Se usarán datos locales.");
@@ -302,66 +302,83 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
   }, [refreshBusinessData]);
 
   useEffect(() => {
-    let refreshTimer: number | undefined;
+    const refreshTimers: Partial<Record<BusinessResource, number>> = {};
     let pendingNotifyNewOrders = false;
 
-    const clearScheduledRefresh = () => {
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
-        refreshTimer = undefined;
-      }
+    const clearScheduledRefreshes = () => {
+      Object.values(refreshTimers).forEach((timer) => window.clearTimeout(timer));
       pendingNotifyNewOrders = false;
     };
 
-    const refreshIfVisible = (notifyNewOrders: boolean) => {
+    const refreshIfVisible = (resource: BusinessResource, notifyNewOrders = false) => {
       if (document.visibilityState !== "visible") return;
 
       pendingNotifyNewOrders = pendingNotifyNewOrders || notifyNewOrders;
-      if (refreshTimer) return;
+      const currentTimer = refreshTimers[resource];
+      if (currentTimer) window.clearTimeout(currentTimer);
 
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = undefined;
-        const shouldNotifyNewOrders = pendingNotifyNewOrders;
-        pendingNotifyNewOrders = false;
-
+      refreshTimers[resource] = window.setTimeout(() => {
+        delete refreshTimers[resource];
         if (document.visibilityState === "visible") {
-          void refreshBusinessData({ notifyNewOrders: shouldNotifyNewOrders });
+          const shouldNotifyNewOrders = resource === "orders" && pendingNotifyNewOrders;
+          if (resource === "orders") pendingNotifyNewOrders = false;
+          void refreshBusinessData({ resources: [resource], notifyNewOrders: shouldNotifyNewOrders });
         }
       }, 250);
     };
 
     const handleVisibilityChange = () => {
-      refreshIfVisible(true);
+      if (document.visibilityState === "visible") {
+        void refreshBusinessData({ notifyNewOrders: true });
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     const supabase = createSupabaseBrowserClient();
 
     if (!supabase) {
-      const interval = window.setInterval(() => refreshIfVisible(true), 30_000);
+      const interval = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void refreshBusinessData({ notifyNewOrders: true });
+        }
+      }, 30_000);
 
       return () => {
         window.clearInterval(interval);
-        clearScheduledRefresh();
+        clearScheduledRefreshes();
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
     }
 
     const channel = supabase
       .channel("dashboard-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => refreshIfVisible(true))
-      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => refreshIfVisible(false))
-      .on("postgres_changes", { event: "*", schema: "public", table: "customers" }, () => refreshIfVisible(false))
-      .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => refreshIfVisible(false))
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => refreshIfVisible(false))
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages" },
+        (payload) => {
+          if (payload.eventType !== "DELETE") {
+            setChats((currentChats) => mergeRealtimeMessage(currentChats, payload.new as RealtimeMessageRow));
+          }
+        }
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => refreshIfVisible("orders", true))
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => refreshIfVisible("orders"))
+      // Conversation updates are also the compatibility fallback while a project
+      // applies the messages publication migration.
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () =>
+        refreshIfVisible("conversations")
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "customers" }, () => refreshIfVisible("customers"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => refreshIfVisible("expenses"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => refreshIfVisible("stock"))
       .on("postgres_changes", { event: "*", schema: "public", table: "base_garment_stock" }, () =>
-        refreshIfVisible(false)
+        refreshIfVisible("stock")
       )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
-      clearScheduledRefresh();
+      clearScheduledRefreshes();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refreshBusinessData]);
@@ -466,12 +483,16 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     setActiveSection("pedidos");
     void (async () => {
       try {
-        await apiFetch("/api/orders", {
+        const response = await apiFetch("/api/orders", {
           method: "POST",
           headers: jsonAuthHeaders,
           body: JSON.stringify(order)
         });
-        await refreshBusinessData({ notifyNewOrders: false });
+        if (!response.ok) throw new Error("No se pudo guardar el pedido");
+        const savedOrders = (await response.json()) as Order[];
+        setOrderList(savedOrders);
+        orderIdsRef.current = new Set(savedOrders.map((savedOrder) => savedOrder.id));
+        await refreshBusinessData({ resources: ["customers"], notifyNewOrders: false });
         showToast(`Pedido ${order.id} registrado correctamente.`);
       } catch {
         showToast(`Pedido ${order.id} quedó local, pero no se pudo guardar en la API.`);
@@ -485,15 +506,25 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     );
 
     void (async () => {
-      await apiFetch("/api/orders", {
-        method: "PATCH",
-        headers: jsonAuthHeaders,
-        body: JSON.stringify({ id: orderId, updates })
-      });
-      await refreshBusinessData({ notifyNewOrders: false });
+      try {
+        const response = await apiFetch("/api/orders", {
+          method: "PATCH",
+          headers: jsonAuthHeaders,
+          body: JSON.stringify({ id: orderId, updates })
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error || "No se pudo actualizar el pedido");
+        }
+        const savedOrders = (await response.json()) as Order[];
+        setOrderList(savedOrders);
+        orderIdsRef.current = new Set(savedOrders.map((savedOrder) => savedOrder.id));
+        showToast(`Pedido ${orderId} actualizado.`);
+      } catch (error) {
+        await refreshBusinessData({ resources: ["orders"], showError: false, notifyNewOrders: false });
+        showToast(error instanceof Error ? error.message : "No se pudo actualizar el pedido.");
+      }
     })();
-
-    showToast(`Pedido ${orderId} actualizado.`);
   };
 
   const handleOpenOrderChat = (order: Order) => {
@@ -525,7 +556,6 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
       const savedProduct = (await response.json()) as Product;
       setProductList((currentProducts) => [savedProduct, ...currentProducts.filter((item) => item.id !== savedProduct.id)]);
       showToast(`Producto "${product.name}" agregado y publicado en el catálogo.`);
-      await refreshBusinessData({ notifyNewOrders: false });
     } catch (error) {
       showToast(`No se pudo agregar "${product.name}".`);
       throw error;
@@ -605,7 +635,7 @@ export function Dashboard({ accessToken, adminEmail, onSignOut }: DashboardProps
     const data = (await response.json()) as { stock: StockItem[]; products: Product[] };
     if (shouldApply()) {
       setStockList(data.stock);
-      if (data.products.length) setProductList(data.products);
+      setProductList(data.products);
     }
   };
 

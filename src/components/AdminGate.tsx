@@ -1,9 +1,25 @@
 "use client";
 
 import type { Session } from "@supabase/supabase-js";
+import dynamic from "next/dynamic";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Dashboard } from "@/components/Dashboard";
 import { createSupabaseBrowserClient } from "@/lib/browserSupabase";
+
+const Dashboard = dynamic(
+  () => import("@/components/Dashboard").then((module) => module.Dashboard),
+  {
+    ssr: false,
+    loading: () => (
+      <main className="auth-shell">
+        <section className="auth-card">
+          <span className="section-kicker">Admin</span>
+          <h1>Cargando panel</h1>
+          <p>Estamos preparando tus datos de administracion.</p>
+        </section>
+      </main>
+    )
+  }
+);
 
 export function AdminGate() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);

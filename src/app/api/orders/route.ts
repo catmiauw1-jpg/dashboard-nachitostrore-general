@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdminRequest } from "@/lib/adminAuth";
-import { createOrder, readOrders, updateOrder } from "@/lib/orderRepository";
+import { OrderNotFoundError, createOrder, readOrders, updateOrder } from "@/lib/orderRepository";
+import { CatalogUnavailableError, readPublicCatalogProducts } from "@/lib/productRepository";
+import { PublicOrderValidationError, securePublicOrder } from "@/lib/publicOrderSecurity";
 import {
   RequestSecurityError,
   assertAllowedOrigin,
@@ -10,6 +12,13 @@ import {
   secureJsonHeaders
 } from "@/lib/requestSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import {
+  OrderReferenceValidationError,
+  displayOrderReference,
+  extractOrderReferencePath,
+  sanitizeSubmittedOrderReferences,
+  storageOrderReference
+} from "@/lib/orderReferenceSecurity";
 import type { Order, OrderLineItem } from "@/types";
 
 const referenceBucket = "order-references";
@@ -20,6 +29,14 @@ const maxReferenceFileBytes = 5 * 1024 * 1024;
 const orderWindowMs = 2 * 60 * 60 * 1000;
 const orderWindowLimit = 5;
 const allowedReferenceTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+class OrderUpdateValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OrderUpdateValidationError";
+  }
+}
 
 async function ensureReferenceBucket() {
   const supabase = createSupabaseAdminClient();
@@ -28,9 +45,8 @@ async function ensureReferenceBucket() {
   const { data: buckets } = await supabase.storage.listBuckets();
   const exists = buckets?.some((bucket) => bucket.id === referenceBucket);
 
-  if (!exists) {
-    await supabase.storage.createBucket(referenceBucket, { public: true });
-  }
+  if (!exists) await supabase.storage.createBucket(referenceBucket, { public: false });
+  else await supabase.storage.updateBucket(referenceBucket, { public: false });
 
   return supabase;
 }
@@ -147,7 +163,7 @@ async function uploadReferences(formData: FormData, orderId: string) {
   const supabase = await ensureReferenceBucket();
   if (!supabase) return files.map((file) => file.name);
 
-  const urls: string[] = [];
+  const references: string[] = [];
 
   for (const [index, file] of files.entries()) {
     const extension = file.name.split(".").pop() || "png";
@@ -160,15 +176,38 @@ async function uploadReferences(formData: FormData, orderId: string) {
     });
 
     if (error) {
-      urls.push(file.name);
+      references.push(file.name);
       continue;
     }
 
-    const { data } = supabase.storage.from(referenceBucket).getPublicUrl(path);
-    urls.push(data.publicUrl);
+    references.push(storageOrderReference(path));
   }
 
-  return urls;
+  return references;
+}
+
+async function signOrderReferences(orders: Order[]) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return orders;
+
+  return Promise.all(
+    orders.map(async (order) => {
+      const referenceImages = await Promise.all(
+        (order.referenceImages ?? []).map(async (reference) => {
+          try {
+            const path = extractOrderReferencePath(reference, supabaseUrl);
+            if (!path) return displayOrderReference(reference);
+            const { data, error } = await supabase.storage.from(referenceBucket).createSignedUrl(path, 60 * 60);
+            return error || !data?.signedUrl ? "Referencia no disponible" : data.signedUrl;
+          } catch (error) {
+            console.error("Order reference signing failed", { orderId: order.id, error });
+            return "Referencia no disponible";
+          }
+        })
+      );
+      return { ...order, referenceImages };
+    })
+  );
 }
 
 async function orderFromFormData(formData: FormData): Promise<Order> {
@@ -231,9 +270,11 @@ function orderFromJson(payload: Order & Record<string, unknown>): Order {
     ) || undefined;
   const notes = cleanText([payload.notes, designDetails].find((value) => typeof value === "string" && value.trim()), 1000) || undefined;
   const type = payload.type === catalogType ? catalogType : "Personalizada";
+  const referenceImages = Array.isArray(payload.referenceImages)
+    ? sanitizeSubmittedOrderReferences(payload.referenceImages.slice(0, maxReferenceFiles), supabaseUrl)
+    : [];
 
   return {
-    ...payload,
     id: cleanText(payload.id, 40) || `#${orderNumber()}`,
     customer: cleanText(payload.customer, 80) || "Cliente web",
     customerPhone: normalizePhone(String(payload.customerPhone ?? payload.phone ?? "")) || undefined,
@@ -243,8 +284,20 @@ function orderFromJson(payload: Order & Record<string, unknown>): Order {
     color: cleanText(payload.color, 60) || undefined,
     total: safeMoney(Number(payload.total)),
     prendas: safeQuantity(Number(payload.prendas)),
+    payment: payload.payment,
+    status: payload.status,
+    channel: payload.channel,
+    delivery: payload.delivery,
+    deliveryArea: payload.deliveryArea,
+    deliveryDepartment: cleanText(payload.deliveryDepartment, 80) || undefined,
     notes,
-    designDetails: designDetails ?? payload.designDetails,
+    source: payload.source,
+    botStatus: payload.botStatus,
+    designDetails,
+    quoteOption: cleanText(payload.quoteOption, 120) || undefined,
+    referenceImages,
+    priority: payload.priority,
+    promisedDeliveryDate: cleanText(payload.promisedDeliveryDate, 40) || undefined,
     items: safeItems(rawItems).map((item) => ({
       ...item,
       description:
@@ -262,11 +315,12 @@ export async function GET(request: Request) {
   try {
     await requireAdminRequest(request);
 
-    const orders = await readOrders();
+    const orders = await signOrderReferences(await readOrders());
     return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
   } catch (error) {
-    const status = error instanceof RequestSecurityError ? error.status : 401;
-    const message = error instanceof Error ? error.message : "No autorizado.";
+    const status = error instanceof RequestSecurityError ? error.status : 500;
+    const message = error instanceof RequestSecurityError ? error.message : "No se pudieron cargar los pedidos.";
+    if (status >= 500) console.error("Order loading failed", error);
     return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
   }
 }
@@ -277,12 +331,8 @@ export async function POST(request: Request) {
     let isAdminSubmission = false;
 
     if (request.headers.get("authorization")) {
-      try {
-        await requireAdminRequest(request);
-        isAdminSubmission = true;
-      } catch {
-        isAdminSubmission = false;
-      }
+      await requireAdminRequest(request);
+      isAdminSubmission = true;
     }
 
     if (!isAdminSubmission && !request.headers.get("origin")) {
@@ -310,12 +360,34 @@ export async function POST(request: Request) {
       order = orderFromJson(payload);
     }
 
+    if (!isAdminSubmission) {
+      const products = await readPublicCatalogProducts({ requireDatabase: true });
+      order = securePublicOrder(order, products);
+    }
+
     validateOrderForSales(order);
     const orders = await createOrder(order);
-    return NextResponse.json(orders, { status: 201, headers: secureJsonHeaders(request) });
+    const response = isAdminSubmission
+      ? await signOrderReferences(orders)
+      : [orders.find((candidate) => candidate.id === order.id) ?? order].map(({ referenceImages: _references, ...savedOrder }) => savedOrder);
+    return NextResponse.json(response, { status: 201, headers: secureJsonHeaders(request) });
   } catch (error) {
-    const status = error instanceof RequestSecurityError ? error.status : 400;
-    const message = error instanceof Error ? error.message : "No se pudo registrar el pedido.";
+    const isInvalidInput =
+      error instanceof PublicOrderValidationError || error instanceof OrderReferenceValidationError;
+    const status = error instanceof RequestSecurityError
+      ? error.status
+      : error instanceof CatalogUnavailableError
+        ? 503
+        : isInvalidInput
+          ? 400
+          : 500;
+    const message =
+      error instanceof RequestSecurityError || isInvalidInput
+        ? error.message
+        : error instanceof CatalogUnavailableError
+          ? "El catálogo no está disponible temporalmente. Intenta nuevamente en unos minutos."
+          : "No se pudo registrar el pedido.";
+    if (status >= 500) console.error("Order creation failed", error);
     return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
   }
 }
@@ -325,13 +397,42 @@ export async function PATCH(request: Request) {
     assertAllowedOrigin(request);
     await requireAdminRequest(request);
 
-    const body = (await request.json()) as { id: string; updates: Partial<Order> };
-    const orders = await updateOrder(body.id, body.updates, { notifyCustomer: true });
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      throw new OrderUpdateValidationError("JSON inválido.");
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new OrderUpdateValidationError("Solicitud inválida.");
+    }
+
+    const candidate = body as { id?: unknown; updates?: unknown };
+    const id = cleanText(candidate.id, 80);
+    if (!id) throw new OrderUpdateValidationError("El pedido es obligatorio.");
+    if (!candidate.updates || typeof candidate.updates !== "object" || Array.isArray(candidate.updates)) {
+      throw new OrderUpdateValidationError("Las actualizaciones son obligatorias.");
+    }
+
+    const orders = await signOrderReferences(
+      await updateOrder(id, candidate.updates as Partial<Order>, { notifyCustomer: true })
+    );
 
     return NextResponse.json(orders, { headers: secureJsonHeaders(request) });
   } catch (error) {
-    const status = error instanceof RequestSecurityError ? error.status : 400;
-    const message = error instanceof Error ? error.message : "No se pudo actualizar el pedido.";
+    const status = error instanceof RequestSecurityError
+      ? error.status
+      : error instanceof OrderUpdateValidationError
+        ? 400
+        : error instanceof OrderNotFoundError
+          ? 404
+          : 500;
+    const message =
+      error instanceof RequestSecurityError || error instanceof OrderUpdateValidationError || error instanceof OrderNotFoundError
+        ? error.message
+        : "No se pudo actualizar el pedido.";
+    if (status >= 500) console.error("Order update failed", error);
     return NextResponse.json({ error: message }, { status, headers: secureJsonHeaders(request) });
   }
 }

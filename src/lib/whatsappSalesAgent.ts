@@ -1,5 +1,6 @@
 import { cleanText } from "@/lib/requestSecurity";
 import { formatWhatsappMessage } from "@/lib/whatsappMessageFormatting";
+import { fetchWithTimeout, getWhatsappAiTimeoutMs } from "@/lib/fetchWithTimeout";
 
 type SalesAgentMessage = {
   role: "system" | "user";
@@ -108,22 +109,21 @@ async function callOpenAiCompatible(messages: SalesAgentMessage[]) {
 
   if (!baseUrl || !model) return null;
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.35,
-      max_tokens: 220
-    })
-  });
+  const json = await fetchWithTimeout(async (signal) => {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+      },
+      body: JSON.stringify({ model, messages, temperature: 0.35, max_tokens: 220 })
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  }, getWhatsappAiTimeoutMs());
 
-  if (!response.ok) return null;
-  const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  if (!json) return null;
   return formatWhatsappMessage(json.choices?.[0]?.message?.content, 1200);
 }
 
@@ -135,26 +135,25 @@ async function callGemini(messages: SalesAgentMessage[]) {
   );
   if (!apiKey || !model) return null;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: messages.find((message) => message.role === "system")?.content ?? storeKnowledge }] },
-      contents: [
-        {
+  const json = await fetchWithTimeout(async (signal) => {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: messages.find((message) => message.role === "system")?.content ?? storeKnowledge }] },
+        contents: [{
           role: "user",
           parts: [{ text: messages.filter((message) => message.role === "user").map((message) => message.content).join("\n\n") }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.35,
-        maxOutputTokens: 220
-      }
-    })
-  });
+        }],
+        generationConfig: { temperature: 0.35, maxOutputTokens: 220 }
+      })
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  }, getWhatsappAiTimeoutMs());
 
-  if (!response.ok) return null;
-  const json = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  if (!json) return null;
   return formatWhatsappMessage(json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n"), 1200);
 }
 
@@ -163,19 +162,18 @@ async function callOllama(messages: SalesAgentMessage[]) {
   const model = cleanText(process.env.WHATSAPP_AI_MODEL ?? process.env.SALES_AI_MODEL, 120);
   if (!model) return null;
 
-  const response = await fetch(`${baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: false,
-      options: { temperature: 0.35, num_predict: 220 }
-    })
-  });
+  const json = await fetchWithTimeout(async (signal) => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, stream: false, options: { temperature: 0.35, num_predict: 220 } })
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as { message?: { content?: string } };
+  }, getWhatsappAiTimeoutMs());
 
-  if (!response.ok) return null;
-  const json = (await response.json()) as { message?: { content?: string } };
+  if (!json) return null;
   return formatWhatsappMessage(json.message?.content, 1200);
 }
 
