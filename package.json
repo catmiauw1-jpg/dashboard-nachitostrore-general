@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --test --test-isolation=none src/lib/fetchWithTimeout.test.ts src/lib/orderReferenceSecurity.test.ts src/lib/productImageOptimization.test.ts src/lib/publicOrderSecurity.test.ts src/lib/realtimeMessages.test.ts src/lib/whatsappMessageFormatting.test.ts src/lib/ycloudDeliveryTracking.test.ts src/lib/ycloudWebhookAuth.test.ts",
-    "test:coverage": "node --experimental-strip-types --experimental-test-coverage --test --test-isolation=none src/lib/fetchWithTimeout.test.ts src/lib/orderReferenceSecurity.test.ts src/lib/productImageOptimization.test.ts src/lib/publicOrderSecurity.test.ts src/lib/realtimeMessages.test.ts src/lib/whatsappMessageFormatting.test.ts src/lib/ycloudDeliveryTracking.test.ts src/lib/ycloudWebhookAuth.test.ts"
+    "test": "node --experimental-strip-types --test --test-isolation=none src/lib/fetchWithTimeout.test.ts src/lib/orderReferenceSecurity.test.ts src/lib/productImageOptimization.test.ts src/lib/publicOrderSecurity.test.ts src/lib/realtimeMessages.test.ts src/lib/whatsappDashboardMetrics.test.ts src/lib/whatsappMessageFormatting.test.ts src/lib/ycloudDeliveryTracking.test.ts src/lib/ycloudWebhookAuth.test.ts",
+    "test:coverage": "node --experimental-strip-types --experimental-test-coverage --test --test-isolation=none src/lib/fetchWithTimeout.test.ts src/lib/orderReferenceSecurity.test.ts src/lib/productImageOptimization.test.ts src/lib/publicOrderSecurity.test.ts src/lib/realtimeMessages.test.ts src/lib/whatsappDashboardMetrics.test.ts src/lib/whatsappMessageFormatting.test.ts src/lib/ycloudDeliveryTracking.test.ts src/lib/ycloudWebhookAuth.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.106.0",

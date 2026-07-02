@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { badgeClass, formatCurrency } from "@/lib/format";
+import { getWhatsAppDashboardMetrics } from "@/lib/whatsappDashboardMetrics";
 import type { Conversation, ConversationMessage, Order, OrderStatus, PaymentStatus } from "@/types";
 
 interface WhatsAppSalesSectionProps {
@@ -268,10 +269,10 @@ export function WhatsAppSalesSection({
     chatPaymentOrders[0] ??
     null;
 
-  const manualChats = sortedChats.filter((chat) => !chat.bot || chat.alert);
-  const proofOrders = reviewOrders.filter((order) => hasProof(order) || order.requiresManualReview);
-  const waitingProofOrders = reviewOrders.filter((order) => order.payment !== "Pago completo" && !hasProof(order));
-
+  const dashboardMetrics = useMemo(
+    () => getWhatsAppDashboardMetrics(sortedChats, orders),
+    [orders, sortedChats]
+  );
   const templates = [
     ["Listo Santa Cruz", readySantaCruzTemplate()],
     ["Listo flota", readyFlotaTemplate()],
@@ -385,17 +386,17 @@ export function WhatsAppSalesSection({
       <div className="whatsapp-console-stats">
         <article>
           <span><IconShieldCheck size={15} /> Pagos por verificar</span>
-          <strong>{proofOrders.length}</strong>
+          <strong>{dashboardMetrics.paymentsToReview}</strong>
           <small>Comprobantes recibidos o revision manual</small>
         </article>
         <article>
           <span><IconQrcode size={15} /> Esperando comprobante</span>
-          <strong>{waitingProofOrders.length}</strong>
+          <strong>{dashboardMetrics.waitingForProof}</strong>
           <small>Ya recibieron monto y QR</small>
         </article>
         <article>
           <span><IconMessageCircle size={15} /> Chats manuales</span>
-          <strong>{manualChats.length}</strong>
+          <strong>{dashboardMetrics.manualChats}</strong>
           <small>Necesitan respuesta humana</small>
         </article>
         <article>
